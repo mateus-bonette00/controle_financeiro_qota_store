@@ -448,12 +448,17 @@ def style_tabs_center_big():
         unsafe_allow_html=True,
     )
 
+# ---- Helpers de reset "adiado" de formulários ----
+def schedule_reset(prefix: str):
+    """Marca para resetar os campos com certo prefixo no próximo rerun."""
+    st.session_state[f"{prefix}__reset"] = True
 
-# Pequeno helper para resetar campos após submit
-def reset_inputs(prefix: str, defaults: dict):
-    for k, v in defaults.items():
-        st.session_state[f"{prefix}{k}"] = v
-
+def apply_pending_reset(prefix: str, keys: list[str]):
+    """Se houver reset pendente, apaga as keys de widget ANTES de desenhar o form."""
+    if st.session_state.get(f"{prefix}__reset"):
+        for k in keys:
+            st.session_state.pop(f"{prefix}{k}", None)
+        st.session_state[f"{prefix}__reset"] = False
 
 # ----------------------------------
 # Boot
@@ -489,8 +494,10 @@ with tab1:
         categorias = ["Compra de Produto", "Mensalidade/Assinatura", "Contabilidade/Legal",
                       "Taxas/Impostos", "Frete/Logística", "Outros"]
 
+        # reset pendente (antes de desenhar o form)
+        apply_pending_reset("g_", ["data","categoria","desc","brl","usd","metodo","conta","quem"])
+
         with st.form("form_gasto"):
-            # valores atuais do estado (ou defaults)
             g_data = st.session_state.get("g_data", date.today())
             g_categoria = st.session_state.get("g_categoria", categorias[0])
             g_desc = st.session_state.get("g_desc", "")
@@ -515,21 +522,15 @@ with tab1:
                     data=data_gasto.strftime("%Y-%m-%d"), categoria=categoria, descricao=desc,
                     valor_brl=val_brl, valor_usd=val_usd, metodo=metodo, conta=conta, quem=quem
                 ))
-                reset_inputs("g_", {
-                    "data": date.today(),
-                    "categoria": categorias[0],
-                    "desc": "",
-                    "brl": 0.0,
-                    "usd": 0.0,
-                    "metodo": "Pix",
-                    "conta": contas[0],
-                    "quem": pessoas[0],
-                })
+                schedule_reset("g_")   # marca o reset para o próximo rerun
                 st.rerun()
 
     # ------- Investimentos -------
     with col2:
         st.subheader("Investimentos")
+
+        apply_pending_reset("i_", ["data","brl","usd","metodo","conta","quem"])
+
         with st.form("form_invest"):
             i_data = st.session_state.get("i_data", date.today())
             i_brl = st.session_state.get("i_brl", 0.0)
@@ -551,14 +552,7 @@ with tab1:
                     data=data_inv.strftime("%Y-%m-%d"), valor_brl=inv_brl, valor_usd=inv_usd,
                     metodo=metodo_i, conta=conta_i, quem=quem_i
                 ))
-                reset_inputs("i_", {
-                    "data": date.today(),
-                    "brl": 0.0,
-                    "usd": 0.0,
-                    "metodo": "Pix",
-                    "conta": contas[0],
-                    "quem": pessoas[0],
-                })
+                schedule_reset("i_")
                 st.rerun()
 
     # Listas + totais
@@ -616,6 +610,9 @@ with tab2:
     # --------- Compras de produto ----------
     with leftC:
         st.markdown("### Compras de Produto (custos em USD, frete não multiplica)")
+
+        apply_pending_reset("pc_", ["data","prod","sku","qty","custo","taxa","prep","frete","obs","conta","quem"])
+
         with st.form("form_produto_compra"):
             pc_data = st.session_state.get("pc_data", date.today())
             pc_prod = st.session_state.get("pc_prod", "")
@@ -625,8 +622,8 @@ with tab2:
             pc_taxa = st.session_state.get("pc_taxa", 0.0)
             pc_prep = st.session_state.get("pc_prep", 0.0)
             pc_frete = st.session_state.get("pc_frete", 0.0)
-            pc_conta = st.session_state.get("conta_pc", contas[0])
-            pc_quem = st.session_state.get("quem_pc", pessoas[0])
+            pc_conta = st.session_state.get("pc_conta", contas[0])
+            pc_quem = st.session_state.get("pc_quem", pessoas[0])
             pc_obs = st.session_state.get("pc_obs", "")
 
             data_pc = st.date_input("Data da compra", value=pc_data, format="DD/MM/YYYY", key="pc_data")
@@ -638,8 +635,8 @@ with tab2:
             prep_unit = st.number_input("Prep Center unitário (USD)", min_value=0.0, step=0.01, format="%.2f", value=pc_prep, key="pc_prep")
             frete_total = st.number_input("Frete total da compra (USD) — não multiplica", min_value=0.0, step=0.01, format="%.2f", value=pc_frete, key="pc_frete")
 
-            conta_pc = st.selectbox("Conta/Banco", contas, index=contas.index(pc_conta), key="conta_pc")
-            quem_pc = st.selectbox("Quem comprou/lançou", pessoas, index=pessoas.index(pc_quem), key="quem_pc")
+            conta_pc = st.selectbox("Conta/Banco", contas, index=contas.index(pc_conta), key="pc_conta")
+            quem_pc = st.selectbox("Quem comprou/lançou", pessoas, index=pessoas.index(pc_quem), key="pc_quem")
             obs_pc = st.text_input("Observação (opcional)", value=pc_obs, placeholder="Lote Setembro, fornecedor X", key="pc_obs")
 
             subtotal = qty * (custo_unit + taxa_unit + prep_unit)
@@ -655,13 +652,7 @@ with tab2:
                         prep_unit=prep_unit, frete_total=frete_total, total_usd=total,
                         conta=conta_pc, quem=quem_pc, obs=obs_pc.strip()
                     ))
-                    reset_inputs("pc_", {
-                        "data": date.today(), "prod": "", "sku": "", "qty": 1,
-                        "custo": 0.0, "taxa": 0.0, "prep": 0.0, "frete": 0.0,
-                        "obs": "",  # selectboxes resetam pelo próprio key (conta_pc/quem_pc)
-                    })
-                    st.session_state["conta_pc"] = contas[0]
-                    st.session_state["quem_pc"] = pessoas[0]
+                    schedule_reset("pc_")
                     st.rerun()
                 else:
                     st.warning("Informe o nome do produto.")
@@ -692,6 +683,9 @@ with tab2:
     # --------- Recebidos Amazon ----------
     with rightC:
         st.markdown("### Dinheiro recebido dentro da Amazon (USD)")
+
+        apply_pending_reset("ar_", ["data","prod","sku","qty","val","quem","obs"])
+
         with st.form("form_amz_receitas"):
             ar_data = st.session_state.get("ar_data", date.today())
             ar_prod = st.session_state.get("ar_prod", "")
@@ -715,14 +709,13 @@ with tab2:
                     data=data_ar.strftime("%Y-%m-%d"), produto=prod_ar.strip(), sku=sku_ar.strip(),
                     quantidade=int(qty_ar), valor_usd=val_ar, quem=quem_ar, obs=obs_ar.strip()
                 ))
-                reset_inputs("ar_", {
-                    "data": date.today(), "prod": "", "sku": "", "qty": 0,
-                    "val": 0.0, "quem": pessoas[0], "obs": "",
-                })
+                schedule_reset("ar_")
                 st.rerun()
 
     # --------- Repasse (com lucro) ----------
     with st.expander("➕ Depósitos FBA (repasse para banco) — com cálculo de Lucro (USD)"):
+        apply_pending_reset("r_", ["data","desc","bruto","cogs","taxas","ads","frete","descs","metodo","conta","quem"])
+
         with st.form("form_receita_repasse"):
             r_data = st.session_state.get("r_data", date.today())
             r_desc = st.session_state.get("r_desc", "")
@@ -770,11 +763,7 @@ with tab2:
                     valor_brl=0, valor_usd=bruto_usd,  # bruto em USD
                     metodo=metodo_r, conta=conta_r, quem=quem_r
                 ))
-                reset_inputs("r_", {
-                    "data": date.today(), "desc": "",
-                    "bruto": 0.0, "cogs": 0.0, "taxas": 0.0, "ads": 0.0, "frete": 0.0, "descs": 0.0,
-                    "metodo": "Pix", "conta": contas[0], "quem": pessoas[0],
-                })
+                schedule_reset("r_")
                 st.rerun()
 
         df_r = df_sql("""SELECT id, data, descricao, bruto, cogs, taxas_amz, ads, frete, descontos, lucro,
