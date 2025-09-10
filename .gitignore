@@ -1,0 +1,26 @@
+# ambientes virtuais
+.venv/
+venv/
+env/
+
+# python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+
+# SO/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# dados locais
+*.db
+finance.db
+
+# caches variados
+.streamlit/cache/
+.cache/
