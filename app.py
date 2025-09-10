@@ -17,7 +17,7 @@ st.set_page_config(page_title="Controle Financeiro Qota Store", layout="wide")
 
 DB_PATH = os.getenv("DB_PATH", "finance.db")
 PRIMARY = "#0053b0"
-APP_PASSWORD = os.getenv("APP_PASSWORD")  # defina no ambiente do Render para proteger o app
+APP_PASSWORD = os.getenv("APP_PASSWORD")  # defina no ambiente (Render) para proteger o app
 
 def require_login():
     if not APP_PASSWORD:
@@ -364,6 +364,13 @@ def apply_month_filter(df: pd.DataFrame, month: str) -> pd.DataFrame:
         return df
     return df[df["data"].astype(str).str.startswith(month)].copy()
 
+def apply_reset_if_needed(flag_key: str, defaults: dict):
+    """Se flag estiver True, aplica defaults ANTES dos widgets e desliga a flag."""
+    if st.session_state.get(flag_key):
+        for k, v in defaults.items():
+            st.session_state[k] = v
+        st.session_state[flag_key] = False
+
 # ----------------------------------
 # Boot
 # ----------------------------------
@@ -385,7 +392,7 @@ g_mes = st.selectbox(
     "Filtro de mês (global) — YYYY-MM",
     options=[""] + global_meses,
     index=g_idx,
-    help="Em branco = todos os meses. Este filtro afeta as abas Principal, Receitas (FBA), Fluxo de Caixa e Gráficos.",
+    help="Em branco = todos os meses. Afeta Principal, Receitas (FBA), Fluxo de Caixa e Gráficos.",
     key="g_mes",
 )
 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
@@ -405,17 +412,35 @@ pessoas = ["Bonette", "Daniel"]
 # ============================
 with tab1:
     col1, col2 = st.columns(2)
+
+    # --- GASTOS (reset antes dos widgets)
+    gastos_defaults = {
+        "g_data": date.today(),
+        "g_categoria": "Compra de Produto",
+        "g_desc": "",
+        "g_val_brl": 0.0,
+        "g_val_usd": 0.0,
+        "g_metodo": "Pix",
+        "g_conta": contas[0],
+        "g_quem": pessoas[0],
+    }
+    apply_reset_if_needed("g_reset", gastos_defaults)
+
     with col1:
         st.subheader("Gastos")
         with st.form("form_gasto"):
-            data_gasto = st.date_input("Data do gasto", value=date.today(), format="DD/MM/YYYY", key="g_data")
+            data_gasto = st.date_input("Data do gasto", value=st.session_state.get("g_data", date.today()),
+                                       format="DD/MM/YYYY", key="g_data")
             categoria = st.selectbox("Categoria",
                                      ["Compra de Produto","Mensalidade/Assinatura","Contabilidade/Legal",
-                                      "Taxas/Impostos","Frete/Logística","Outros"], key="g_categoria")
+                                      "Taxas/Impostos","Frete/Logística","Outros"],
+                                     key="g_categoria")
             desc = st.text_input("Descrição do gasto", key="g_desc")
             val_brl = st.number_input("Valor em BRL", min_value=0.0, step=0.01, format="%.2f", key="g_val_brl")
             val_usd = st.number_input("Valor em USD", min_value=0.0, step=0.01, format="%.2f", key="g_val_usd")
-            metodo = st.selectbox("Método de pagamento", ["Pix","Cartão de Crédito","Boleto","Transferência","Dinheiro"], key="g_metodo")
+            metodo = st.selectbox("Método de pagamento",
+                                  ["Pix","Cartão de Crédito","Boleto","Transferência","Dinheiro"],
+                                  key="g_metodo")
             conta = st.selectbox("Conta/Banco", contas, key="g_conta")
             quem = st.selectbox("Quem pagou", pessoas, key="g_quem")
             if st.form_submit_button("Adicionar gasto"):
@@ -423,19 +448,30 @@ with tab1:
                     data=data_gasto.strftime("%Y-%m-%d"), categoria=categoria, descricao=desc,
                     valor_brl=val_brl, valor_usd=val_usd, metodo=metodo, conta=conta, quem=quem
                 ))
-                for k, v in {"g_data": date.today(), "g_categoria": "Compra de Produto", "g_desc": "",
-                             "g_val_brl": 0.0, "g_val_usd": 0.0, "g_metodo": "Pix",
-                             "g_conta": contas[0], "g_quem": pessoas[0]}.items():
-                    st.session_state[k] = v
+                st.session_state["g_reset"] = True
                 st.rerun()
+
+    # --- INVESTIMENTOS (reset antes dos widgets)
+    invest_defaults = {
+        "i_data": date.today(),
+        "i_brl": 0.0,
+        "i_usd": 0.0,
+        "i_metodo": "Pix",
+        "i_conta": contas[0],
+        "i_quem": pessoas[0],
+    }
+    apply_reset_if_needed("i_reset", invest_defaults)
 
     with col2:
         st.subheader("Investimentos")
         with st.form("form_invest"):
-            data_inv = st.date_input("Data do investimento", value=date.today(), format="DD/MM/YYYY", key="i_data")
+            data_inv = st.date_input("Data do investimento", value=st.session_state.get("i_data", date.today()),
+                                     format="DD/MM/YYYY", key="i_data")
             inv_brl = st.number_input("Valor em BRL", min_value=0.0, step=0.01, format="%.2f", key="i_brl")
             inv_usd = st.number_input("Valor em USD", min_value=0.0, step=0.01, format="%.2f", key="i_usd")
-            metodo_i = st.selectbox("Método de pagamento", ["Pix","Cartão de Crédito","Boleto","Transferência","Dinheiro"], key="i_metodo")
+            metodo_i = st.selectbox("Método de pagamento",
+                                    ["Pix","Cartão de Crédito","Boleto","Transferência","Dinheiro"],
+                                    key="i_metodo")
             conta_i = st.selectbox("Conta/Banco", contas, key="i_conta")
             quem_i = st.selectbox("Quem investiu/pagou", pessoas, key="i_quem")
             if st.form_submit_button("Adicionar investimento"):
@@ -443,13 +479,11 @@ with tab1:
                     data=data_inv.strftime("%Y-%m-%d"), valor_brl=inv_brl, valor_usd=inv_usd,
                     metodo=metodo_i, conta=conta_i, quem=quem_i
                 ))
-                for k, v in {"i_data": date.today(), "i_brl": 0.0, "i_usd": 0.0, "i_metodo": "Pix",
-                             "i_conta": contas[0], "i_quem": pessoas[0]}.items():
-                    st.session_state[k] = v
+                st.session_state["i_reset"] = True
                 st.rerun()
 
+    # Listas + totais
     left, right = st.columns(2)
-
     with left:
         st.markdown("### Gastos cadastrados")
         df_g_all = df_sql("""SELECT id, data, categoria, descricao, valor_brl, valor_usd, metodo, conta, quem
@@ -508,30 +542,55 @@ with tab1:
         )
 
 # ============================
-# TAB 2 - RECEITAS (FBA)
+# TAB 2 - RECEITAS (FBA) — USD
 # ============================
 with tab2:
     st.subheader("Operação FBA — Compras (USD) e Recebidos na Amazon (USD)")
 
     leftC, rightC = st.columns(2)
+
+    # --- COMPRAS DE PRODUTO (reset antes dos widgets)
+    pc_defaults = {
+        "pc_data": date.today(),
+        "pc_prod": "",
+        "pc_sku": "",
+        "pc_qty": 1,
+        "pc_custo": 0.0,
+        "pc_taxa": 0.0,
+        "pc_prep": 0.0,
+        "pc_frete": 0.0,
+        "conta_pc": contas[0],
+        "quem_pc": pessoas[0],
+        "obs_pc": "",
+    }
+    apply_reset_if_needed("pc_reset", pc_defaults)
+
     with leftC:
         st.markdown("### Compras de Produto (custos em USD, frete não multiplica)")
         with st.form("form_produto_compra"):
-            data_pc = st.date_input("Data da compra", value=date.today(), format="DD/MM/YYYY")
-            prod = st.text_input("Nome do produto *", placeholder="Ex.: Garrafa Térmica 500ml")
-            sku = st.text_input("SKU (opcional)", placeholder="Ex.: BTL-500-INOX")
-            qty = st.number_input("Quantidade", min_value=1, step=1, value=1)
-            custo_unit = st.number_input("Custo unitário (USD)", min_value=0.0, step=0.01, format="%.2f")
-            taxa_unit = st.number_input("Taxa unitária (se tiver) (USD)", min_value=0.0, step=0.01, format="%.2f")
-            prep_unit = st.number_input("Prep Center unitário (USD)", min_value=0.0, step=0.01, format="%.2f")
-            frete_total = st.number_input("Frete total da compra (USD) — não multiplica", min_value=0.0, step=0.01, format="%.2f")
+            data_pc = st.date_input("Data da compra", value=st.session_state.get("pc_data", date.today()),
+                                    format="DD/MM/YYYY", key="pc_data")
+            prod = st.text_input("Nome do produto *", key="pc_prod", placeholder="Ex.: Garrafa Térmica 500ml")
+            sku = st.text_input("SKU (opcional)", key="pc_sku", placeholder="Ex.: BTL-500-INOX")
+            qty = st.number_input("Quantidade", min_value=1, step=1, value=st.session_state.get("pc_qty", 1),
+                                  key="pc_qty")
+            custo_unit = st.number_input("Custo unitário (USD)", min_value=0.0, step=0.01, format="%.2f",
+                                         key="pc_custo")
+            taxa_unit = st.number_input("Taxa unitária (se tiver) (USD)", min_value=0.0, step=0.01, format="%.2f",
+                                        key="pc_taxa")
+            prep_unit = st.number_input("Prep Center unitário (USD)", min_value=0.0, step=0.01, format="%.2f",
+                                        key="pc_prep")
+            frete_total = st.number_input("Frete total da compra (USD) — não multiplica", min_value=0.0, step=0.01,
+                                          format="%.2f", key="pc_frete")
             conta_pc = st.selectbox("Conta/Banco", contas, key="conta_pc")
             quem_pc = st.selectbox("Quem comprou/lançou", pessoas, key="quem_pc")
-            obs_pc = st.text_input("Observação (opcional)", placeholder="Lote Setembro, fornecedor X")
+            obs_pc = st.text_input("Observação (opcional)", key="obs_pc", placeholder="Lote Setembro, fornecedor X")
+
             subtotal = qty * (custo_unit + taxa_unit + prep_unit)
             total = subtotal + frete_total
             st.markdown(f"**Subtotal (qty × (custo + taxa + prep))**: {money_usd(subtotal)}")
             st.markdown(f"**Total da compra (subtotal + frete)**: {money_usd(total)}")
+
             if st.form_submit_button("Adicionar compra de produto"):
                 if prod.strip():
                     add_row("produtos_compra", dict(
@@ -540,11 +599,12 @@ with tab2:
                         prep_unit=prep_unit, frete_total=frete_total, total_usd=total,
                         conta=conta_pc, quem=quem_pc, obs=obs_pc.strip()
                     ))
+                    st.session_state["pc_reset"] = True
                     st.rerun()
                 else:
                     st.warning("Informe o nome do produto.")
 
-        df_pc_all = df_sql("""SELECT id, data, produto, sku, quantidade, custo_unit, taxa_unit, prep_unit, frete_total,
+        df_pc_all = df_sql("""SELECT id, data, produto, sku, quantidade, custo_unit, taxa_unit, prep_unit, frete_total, 
                                       COALESCE(total_usd, 0) as total_usd, conta, quem
                                FROM produtos_compra ORDER BY date(data) DESC, id DESC;""")
         df_pc = apply_month_filter(df_pc_all, g_mes)
@@ -555,12 +615,14 @@ with tab2:
             df_pc_view = pd.DataFrame({
                 "ID": df_pc["id"].astype(int),
                 "Data": df_pc["data"],
-                "Produto": df_pc["produto"], "SKU": df_pc["sku"],
+                "Produto": df_pc["produto"],
+                "SKU": df_pc["sku"],
                 "Qtd": df_pc["quantidade"].astype(int),
                 "Subtotal (USD)": (df_pc["quantidade"] * (df_pc["custo_unit"] + df_pc["taxa_unit"] + df_pc["prep_unit"])).map(money_usd),
                 "Frete (USD)": df_pc["frete_total"].map(money_usd),
                 "Total (USD)": df_pc["total_usd"].map(money_usd),
-                "Conta": df_pc["conta"].fillna(""), "Quem": df_pc["quem"].fillna(""),
+                "Conta": df_pc["conta"].fillna(""),
+                "Quem": df_pc["quem"].fillna(""),
             })
             st.markdown(df_to_clean_html(df_pc_view, "del_pc", "tbl_pc"), unsafe_allow_html=True)
         else:
@@ -572,24 +634,42 @@ with tab2:
             margin_top=16
         )
 
+    # --- RECEBIDOS DENTRO DA AMAZON (reset antes dos widgets)
+    ar_defaults = {
+        "ar_data": date.today(),
+        "ar_prod": "",
+        "ar_sku": "",
+        "ar_qty": 0,
+        "ar_val": 0.0,
+        "ar_quem": pessoas[0],
+        "ar_obs": "",
+    }
+    apply_reset_if_needed("ar_reset", ar_defaults)
+
     with rightC:
         st.markdown("### Dinheiro recebido dentro da Amazon (USD)")
         with st.form("form_amz_receitas"):
-            data_ar = st.date_input("Data do crédito", value=date.today(), format="DD/MM/YYYY", key="data_ar")
-            prod_ar = st.text_input("Produto (opcional)", key="prod_ar")
-            sku_ar = st.text_input("SKU (opcional)", key="sku_ar")
-            qty_ar = st.number_input("Quantidade vendida (opcional)", min_value=0, step=1, value=0, key="qty_ar")
-            val_ar = st.number_input("Valor recebido (USD) dentro da Amazon", min_value=0.0, step=0.01, format="%.2f", key="val_ar")
-            quem_ar = st.selectbox("Quem lançou", pessoas, key="quem_ar")
-            obs_ar = st.text_input("Observação (opcional)", key="obs_ar")
+            data_ar = st.date_input("Data do crédito", value=st.session_state.get("ar_data", date.today()),
+                                    format="DD/MM/YYYY", key="ar_data")
+            prod_ar = st.text_input("Produto (opcional)", key="ar_prod")
+            sku_ar = st.text_input("SKU (opcional)", key="ar_sku")
+            qty_ar = st.number_input("Quantidade vendida (opcional)", min_value=0, step=1,
+                                     value=st.session_state.get("ar_qty", 0), key="ar_qty")
+            val_ar = st.number_input("Valor recebido (USD) dentro da Amazon", min_value=0.0, step=0.01,
+                                     format="%.2f", key="ar_val")
+            quem_ar = st.selectbox("Quem lançou", pessoas, key="ar_quem")
+            obs_ar = st.text_input("Observação (opcional)", key="ar_obs")
+
             if st.form_submit_button("Adicionar recebimento (Amazon)"):
                 add_row("amazon_receitas", dict(
                     data=data_ar.strftime("%Y-%m-%d"), produto=prod_ar.strip(), sku=sku_ar.strip(),
                     quantidade=int(qty_ar), valor_usd=val_ar, quem=quem_ar, obs=obs_ar.strip()
                 ))
+                st.session_state["ar_reset"] = True
                 st.rerun()
 
-        df_ar_all = df_sql("""SELECT id, data, produto, sku, quantidade, COALESCE(valor_usd, 0) as valor_usd, quem
+        df_ar_all = df_sql("""SELECT id, data, produto, sku, quantidade, 
+                                     COALESCE(valor_usd, 0) as valor_usd, quem
                               FROM amazon_receitas ORDER BY date(data) DESC, id DESC;""")
         df_ar = apply_month_filter(df_ar_all, g_mes)
         tot_ar_usd = float(df_ar["valor_usd"].sum()) if not df_ar.empty else 0.0
@@ -597,9 +677,11 @@ with tab2:
         st.markdown(f"**Totais de recebidos (Amazon)** — Quantidade vendida: **{tot_ar_qty}** · Valor: **{money_usd(tot_ar_usd)}**")
         if not df_ar.empty:
             df_ar_view = pd.DataFrame({
-                "ID": df_ar["id"].astype(int), "Data": df_ar["data"], "Produto": df_ar["produto"],
-                "SKU": df_ar["sku"], "Qtd": df_ar["quantidade"].astype(int),
-                "Valor (USD)": df_ar["valor_usd"].map(money_usd), "Quem": df_ar["quem"].fillna(""),
+                "ID": df_ar["id"].astype(int),
+                "Data": df_ar["data"], "Produto": df_ar["produto"], "SKU": df_ar["sku"],
+                "Qtd": df_ar["quantidade"].astype(int),
+                "Valor (USD)": df_ar["valor_usd"].map(money_usd),
+                "Quem": df_ar["quem"].fillna(""),
             })
             st.markdown(df_to_clean_html(df_ar_view, "del_ar", "tbl_ar"), unsafe_allow_html=True)
         else:
@@ -611,34 +693,58 @@ with tab2:
             margin_top=16
         )
 
+    # --- DEPÓSITOS/REPASSE FBA (reset antes dos widgets)
+    r_defaults = {
+        "r_data": date.today(),
+        "r_desc": "",
+        "r_bruto": 0.0,
+        "r_cogs": 0.0,
+        "r_taxas": 0.0,
+        "r_ads": 0.0,
+        "r_frete": 0.0,
+        "r_descs": 0.0,
+        "conta_rec": contas[0],
+        "quem_rec": pessoas[0],
+    }
+    apply_reset_if_needed("r_reset", r_defaults)
+
     with st.expander("➕ Depósitos FBA (repasse para banco) — com cálculo de Lucro (USD)"):
         with st.form("form_receita_repasse"):
             c0, c1 = st.columns([1,2])
             with c0:
-                data_r = st.date_input("Data do recebimento (repasse)", value=date.today(), format="DD/MM/YYYY")
+                data_r = st.date_input("Data do recebimento (repasse)", value=st.session_state.get("r_data", date.today()),
+                                       format="DD/MM/YYYY", key="r_data")
             with c1:
-                desc_r = st.text_input("Descrição", placeholder="Ex.: Depósito Amazon FBA, cycle 2025-09")
+                desc_r = st.text_input("Descrição", value=st.session_state.get("r_desc",""),
+                                       placeholder="Ex.: Depósito Amazon FBA, cycle 2025-09", key="r_desc")
+
             col_a, col_b = st.columns(2)
             with col_a:
-                bruto_usd = st.number_input("Bruto recebido (USD)", 0.0, step=0.01, format="%.2f")
-                cogs_usd  = st.number_input("COGS (USD)", 0.0, step=0.01, format="%.2f")
-                taxas_usd = st.number_input("Taxas Amazon (USD)", 0.0, step=0.01, format="%.2f")
+                bruto_usd = st.number_input("Bruto recebido (USD)", 0.0, step=0.01, format="%.2f", key="r_bruto")
+                cogs_usd  = st.number_input("COGS (USD)", 0.0, step=0.01, format="%.2f", key="r_cogs")
+                taxas_usd = st.number_input("Taxas Amazon (USD)", 0.0, step=0.01, format="%.2f", key="r_taxas")
             with col_b:
-                ads_usd   = st.number_input("Anúncios/PPC (USD)", 0.0, step=0.01, format="%.2f")
-                frete_usd = st.number_input("Frete/Logística (USD)", 0.0, step=0.01, format="%.2f")
-                desc_usd  = st.number_input("Devoluções/Descontos (USD)", 0.0, step=0.01, format="%.2f")
+                ads_usd   = st.number_input("Anúncios/PPC (USD)", 0.0, step=0.01, format="%.2f", key="r_ads")
+                frete_usd = st.number_input("Frete/Logística (USD)", 0.0, step=0.01, format="%.2f", key="r_frete")
+                desc_usd  = st.number_input("Devoluções/Descontos (USD)", 0.0, step=0.01, format="%.2f", key="r_descs")
+
             lucro_usd = bruto_usd - (cogs_usd + taxas_usd + ads_usd + frete_usd + desc_usd)
             st.markdown(f"**Lucro calculado (USD): {money_usd(lucro_usd)}**")
-            metodo_r = st.selectbox("Método de recebimento", ["Pix","Transferência","Boleto","Cartão de Crédito","Dinheiro"])
+
+            metodo_r = st.selectbox("Método de recebimento",
+                                    ["Pix","Transferência","Boleto","Cartão de Crédito","Dinheiro"])
             conta_r  = st.selectbox("Conta/Banco", contas, key="conta_rec")
             quem_r   = st.selectbox("Responsável (quem lançou)", pessoas, key="quem_rec")
+
             if st.form_submit_button("Adicionar depósito FBA (repasse)"):
                 add_row("receitas", dict(
                     data=data_r.strftime("%Y-%m-%d"), origem="FBA", descricao=desc_r,
                     bruto=bruto_usd, cogs=cogs_usd, taxas_amz=taxas_usd, ads=ads_usd,
                     frete=frete_usd, descontos=desc_usd, lucro=lucro_usd,
-                    valor_brl=0, valor_usd=bruto_usd, metodo=metodo_r, conta=conta_r, quem=quem_r
+                    valor_brl=0, valor_usd=bruto_usd,  # bruto em USD
+                    metodo=metodo_r, conta=conta_r, quem=quem_r
                 ))
+                st.session_state["r_reset"] = True
                 st.rerun()
 
         df_r_all = df_sql("""SELECT id, data, descricao, bruto, cogs, taxas_amz, ads, frete, descontos, lucro,
@@ -648,14 +754,22 @@ with tab2:
         tot_bruto = float(df_r["bruto"].sum()) if not df_r.empty else 0.0
         tot_lucro = float(df_r["lucro"].sum()) if not df_r.empty else 0.0
         st.markdown(f"**Totais de Depósitos FBA (USD)** — Bruto: {money_usd(tot_bruto)} · Lucro: {money_usd(tot_lucro)}")
+
         if not df_r.empty:
             df_view_r = pd.DataFrame({
-                "ID": df_r["id"].astype(int), "Data": df_r["data"], "Descrição": df_r["descricao"].fillna(""),
-                "Bruto (USD)": df_r["bruto"].map(money_usd), "COGS (USD)": df_r["cogs"].map(money_usd),
-                "Taxas AMZ (USD)": df_r["taxas_amz"].map(money_usd), "Ads (USD)": df_r["ads"].map(money_usd),
-                "Frete (USD)": df_r["frete"].map(money_usd), "Descontos (USD)": df_r["descontos"].map(money_usd),
-                "Lucro (USD)": df_r["lucro"].map(money_usd), "Método": df_r["metodo"].fillna(""),
-                "Conta": df_r["conta"].fillna(""), "Quem": df_r["quem"].fillna(""),
+                "ID": df_r["id"].astype(int),
+                "Data": df_r["data"],
+                "Descrição": df_r["descricao"].fillna(""),
+                "Bruto (USD)": df_r["bruto"].map(money_usd),
+                "COGS (USD)": df_r["cogs"].map(money_usd),
+                "Taxas AMZ (USD)": df_r["taxas_amz"].map(money_usd),
+                "Ads (USD)": df_r["ads"].map(money_usd),
+                "Frete (USD)": df_r["frete"].map(money_usd),
+                "Descontos (USD)": df_r["descontos"].map(money_usd),
+                "Lucro (USD)": df_r["lucro"].map(money_usd),
+                "Método": df_r["metodo"].fillna(""),
+                "Conta": df_r["conta"].fillna(""),
+                "Quem": df_r["quem"].fillna(""),
             })
             st.markdown(df_to_clean_html(df_view_r, "del_rec", "tbl_rec"), unsafe_allow_html=True)
         else:
@@ -728,7 +842,7 @@ with tab3:
                 dfv[col]=dfv[col].map(money_usd)
             st.dataframe(dfv.rename(columns={"mes":"Mês"}), use_container_width=True, hide_index=True)
 
-        # Totais gerais (sempre de TODOS os meses)
+        # Totais gerais (sempre TODOS os meses)
         p_usd_all = pd.concat([
             monthly(df_g,"Despesas (Gastos)")[["mes","tipo","usd"]],
             monthly(df_i,"Despesas (Invest.)")[["mes","tipo","usd"]],
@@ -736,9 +850,10 @@ with tab3:
         ], ignore_index=True).pivot_table(index="mes", columns="tipo", values="usd", aggfunc="sum", fill_value=0).reset_index()
         for c in ["Despesas (Gastos)","Despesas (Invest.)","Receitas (FBA)"]:
             if c not in p_usd_all: p_usd_all[c]=0.0
+        p_usd_all["Resultado"] = p_usd_all["Receitas (FBA)"] - (p_usd_all["Despesas (Gastos)"] + p_usd_all["Despesas (Invest.)"])
         tot_receita_usd=float(p_usd_all["Receitas (FBA)"].sum())
         tot_desp_usd=float(p_usd_all["Despesas (Gastos)"].sum()+p_usd_all["Despesas (Invest.)"].sum())
-        tot_result_usd=float(p_usd_all["Resultado"].sum()) if "Resultado" in p_usd_all else float((p_usd_all["Receitas (FBA)"]-(p_usd_all["Despesas (Gastos)"]+p_usd_all["Despesas (Invest.)"])).sum())
+        tot_result_usd=float(p_usd_all["Resultado"].sum())
         st.markdown("### Totais Gerais (USD) — soma de todos os meses")
         summary_card_usd("Totais gerais (USD)", tot_receita_usd, tot_desp_usd, tot_result_usd)
 
@@ -835,8 +950,10 @@ with tab5:
         card = (f"Disponível: {money_usd(last['disponivel'])} · Pendente: {money_usd(last['pendente'])}") if last["moeda"]=="USD" \
                else (f"Disponível: {money_brl(last['disponivel'])} · Pendente: {money_brl(last['pendente'])}")
         st.markdown(f"**Último snapshot ({last['data']} - {last['moeda']}):** {card}")
+
         df_view_s = pd.DataFrame({
-            "ID": df_s["id"].astype(int), "Data": df_s["data"],
+            "ID": df_s["id"].astype(int),
+            "Data": df_s["data"],
             "Disponível": df_s.apply(lambda r: money_usd(r["disponivel"]) if r["moeda"]=="USD" else money_brl(r["disponivel"]), axis=1),
             "Pendente":  df_s.apply(lambda r: money_usd(r["pendente"])  if r["moeda"]=="USD" else money_brl(r["pendente"]),  axis=1),
             "Moeda": df_s["moeda"],
@@ -846,7 +963,7 @@ with tab5:
         st.info("Sem snapshots cadastrados.")
 
 # ============================
-# TAB 6 - ALOCAÇÕES
+# TAB 6 - ALOCAÇÕES (PROFIT FIRST)
 # ============================
 with tab6:
     st.subheader("Regras de Alocação (Profit First)")
@@ -873,6 +990,7 @@ with tab6:
         mes_ref = st.selectbox("Escolha o mês", meses, index=len(meses)-1)
         tot_lucro_mes = df_sql(f"SELECT COALESCE(SUM(lucro),0) AS x FROM receitas WHERE strftime('%Y-%m', date(data))='{mes_ref}';").iloc[0]["x"]
         st.markdown(f"**Lucro do mês {mes_ref}: {money_usd(tot_lucro_mes)}**")
+
         df_regra2 = df_sql("SELECT nome, pct FROM alocacoes_regra ORDER BY nome;")
         if not df_regra2.empty:
             dist = {row["nome"]: round(float(tot_lucro_mes) * float(row["pct"]), 2) for _, row in df_regra2.iterrows()}
