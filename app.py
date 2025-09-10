@@ -17,20 +17,7 @@ st.set_page_config(page_title="Controle Financeiro Qota Store", layout="wide")
 
 DB_PATH = os.getenv("DB_PATH", "finance.db")
 PRIMARY = "#0053b0"
-APP_PASSWORD = os.getenv("APP_PASSWORD")  # defina no ambiente (Render) para proteger o app
 
-def require_login():
-    if not APP_PASSWORD:
-        return
-    ok = st.session_state.get("authed", False)
-    if not ok:
-        st.title("Acesso restrito")
-        pwd = st.text_input("Senha", type="password")
-        if st.button("Entrar"):
-            st.session_state.authed = (pwd == APP_PASSWORD)
-        st.stop()
-
-require_login()
 
 # ----------------------------------
 # DB helpers
