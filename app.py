@@ -14,10 +14,8 @@ import altair as alt
 # Config
 # ----------------------------------
 st.set_page_config(page_title="Controle Financeiro Qota Store", layout="wide")
-
 DB_PATH = os.getenv("DB_PATH", "finance.db")
 PRIMARY = "#0053b0"
-
 
 # ----------------------------------
 # DB helpers
@@ -78,6 +76,7 @@ def rebuild_receitas_without_real():
         conn.commit()
 
 def init_db():
+    # básicos
     ensure_table("""
         CREATE TABLE IF NOT EXISTS gastos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -118,39 +117,59 @@ def init_db():
     for c in ["bruto","cogs","taxas_amz","ads","frete","descontos","lucro"]:
         add_column_if_missing("receitas", c, "REAL NOT NULL DEFAULT 0")
 
+    # produtos/estoque
     ensure_table("""
-        CREATE TABLE IF NOT EXISTS produtos_compra (
+        CREATE TABLE IF NOT EXISTS produtos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            data TEXT NOT NULL,
-            produto TEXT NOT NULL,
+            data_add TEXT NOT NULL,
+            nome TEXT NOT NULL,
             sku TEXT,
-            quantidade INTEGER NOT NULL DEFAULT 1,
-            custo_unit REAL NOT NULL DEFAULT 0,
-            taxa_unit REAL NOT NULL DEFAULT 0,
-            prep_unit REAL NOT NULL DEFAULT 0,
-            frete_total REAL NOT NULL DEFAULT 0,
-            total_brl REAL NOT NULL DEFAULT 0,
-            conta TEXT,
-            quem TEXT,
-            obs TEXT
+            upc TEXT,
+            asin TEXT,
+            estoque INTEGER NOT NULL DEFAULT 0,
+            price_to_buy REAL NOT NULL DEFAULT 0,
+            freight REAL NOT NULL DEFAULT 0,
+            tax REAL NOT NULL DEFAULT 0,
+            prep REAL NOT NULL DEFAULT 2,
+            sold_for REAL NOT NULL DEFAULT 0,
+            amazon_fees REAL NOT NULL DEFAULT 0,
+            link_amazon TEXT,
+            link_fornecedor TEXT
         );
     """)
-    add_column_if_missing("produtos_compra", "total_usd", "REAL NOT NULL DEFAULT 0")
+    # migração defensiva
+    add_column_if_missing("produtos", "data_add", "TEXT NOT NULL DEFAULT '1970-01-01'")
+    add_column_if_missing("produtos", "nome", "TEXT")
+    add_column_if_missing("produtos", "sku", "TEXT")
+    add_column_if_missing("produtos", "upc", "TEXT")
+    add_column_if_missing("produtos", "asin", "TEXT")
+    add_column_if_missing("produtos", "estoque", "INTEGER NOT NULL DEFAULT 0")
+    add_column_if_missing("produtos", "price_to_buy", "REAL NOT NULL DEFAULT 0")
+    add_column_if_missing("produtos", "freight", "REAL NOT NULL DEFAULT 0")
+    add_column_if_missing("produtos", "tax", "REAL NOT NULL DEFAULT 0")
+    add_column_if_missing("produtos", "prep", "REAL NOT NULL DEFAULT 2")
+    add_column_if_missing("produtos", "sold_for", "REAL NOT NULL DEFAULT 0")
+    add_column_if_missing("produtos", "amazon_fees", "REAL NOT NULL DEFAULT 0")
+    add_column_if_missing("produtos", "link_amazon", "TEXT")
+    add_column_if_missing("produtos", "link_fornecedor", "TEXT")
 
+    # recebidos amazon
     ensure_table("""
         CREATE TABLE IF NOT EXISTS amazon_receitas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             data TEXT NOT NULL,
-            produto TEXT,
-            sku TEXT,
+            produto_id INTEGER,
             quantidade INTEGER NOT NULL DEFAULT 0,
-            valor_brl REAL NOT NULL DEFAULT 0,
+            valor_usd REAL NOT NULL DEFAULT 0,
             quem TEXT,
-            obs TEXT
+            obs TEXT,
+            FOREIGN KEY(produto_id) REFERENCES produtos(id) ON DELETE SET NULL
         );
     """)
-    add_column_if_missing("amazon_receitas", "valor_usd", "REAL NOT NULL DEFAULT 0")
+    add_column_if_missing("amazon_receitas", "produto", "TEXT")
+    add_column_if_missing("amazon_receitas", "sku", "TEXT")
 
+    # saldos
     ensure_table("""
         CREATE TABLE IF NOT EXISTS amazon_saldos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -160,22 +179,7 @@ def init_db():
             moeda TEXT NOT NULL DEFAULT 'USD'
         );
     """)
-    ensure_table("""
-        CREATE TABLE IF NOT EXISTS alocacoes_regra (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT UNIQUE,
-            pct REAL NOT NULL
-        );
-    """)
-    ensure_table("""
-        CREATE TABLE IF NOT EXISTS alocacoes_execucao (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            mes TEXT NOT NULL,
-            nome TEXT NOT NULL,
-            valor_brl REAL NOT NULL,
-            valor_usd REAL NOT NULL DEFAULT 0
-        );
-    """)
+
     rebuild_receitas_without_real()
 
 def add_row(table: str, row: dict):
@@ -203,15 +207,17 @@ def money_usd(x):
     return f"$ {v:,.2f}"
 
 def handle_query_deletions():
-    try: q = dict(st.query_params)
-    except Exception: q = st.experimental_get_query_params()
+    try:
+        q = dict(st.query_params)
+    except Exception:
+        q = st.experimental_get_query_params()
     changed = False
     mapping = {
         "del_gasto": "gastos",
         "del_inv": "investimentos",
         "del_rec": "receitas",
         "del_saldo": "amazon_saldos",
-        "del_pc": "produtos_compra",
+        "del_pc": "produtos",
         "del_ar": "amazon_receitas",
     }
     for param, table in mapping.items():
@@ -233,6 +239,20 @@ def totals_card(title: str, brl: float, usd: float):
             <div style="font-size:20px; font-weight:600; margin-bottom:8px;">{escape(title)}</div>
             <div style="font-size:26px; font-weight:800; margin-bottom:6px;">Total BRL: {escape(money_brl(brl))}</div>
             <div style="font-size:26px; font-weight:800;">Total USD: {escape(money_usd(usd))}</div>
+        </div>
+        """, unsafe_allow_html=True,
+    )
+
+def primary_card_centered(html_inside: str, margin_top_px: int = 36):
+    """Card central azul (sem tags 'soltas')."""
+    st.markdown(
+        f"""
+        <div style="width:100%; display:flex; justify-content:center; margin:{margin_top_px}px 0 8px;">
+          <div style="max-width:1100px; background:{PRIMARY}; color:#fff; padding:18px 24px;
+                      border-radius:16px; font-weight:700; font-size:18px; line-height:1.35;
+                      text-align:center; box-shadow:0 6px 20px rgba(0,0,0,.18);">
+            {html_inside}
+          </div>
         </div>
         """, unsafe_allow_html=True,
     )
@@ -269,7 +289,8 @@ def footer_total_badge(title: str, brl: float, usd: float, margin_top: int = 32)
     )
 
 def df_to_clean_html(df: pd.DataFrame, del_param: str, anchor: str) -> str:
-    if "Data" in df: df["Data"] = pd.to_datetime(df["Data"]).dt.strftime("%d/%m/%Y")
+    if "Data" in df:
+        df["Data"] = pd.to_datetime(df["Data"]).dt.strftime("%d/%m/%Y")
     for col in df.columns:
         if col in {"ID", "Valor (BRL)", "Valor (USD)", "Lucro (USD)", "Subtotal (USD)", "Total (USD)", "Margem %"}:
             continue
@@ -337,9 +358,13 @@ def style_tabs_center_big():
 
 def get_all_months() -> list[str]:
     meses = set()
-    for tbl in ["gastos", "investimentos", "receitas", "produtos_compra", "amazon_receitas", "amazon_saldos"]:
+    for tbl in ["gastos", "investimentos", "receitas", "produtos", "amazon_receitas", "amazon_saldos"]:
         try:
-            df = df_sql(f"SELECT DISTINCT strftime('%Y-%m', date(data)) AS m FROM {tbl};")
+            # produtos usa data_add
+            if tbl == "produtos":
+                df = df_sql("SELECT DISTINCT strftime('%Y-%m', date(data_add)) AS m FROM produtos;")
+            else:
+                df = df_sql(f"SELECT DISTINCT strftime('%Y-%m', date(data)) AS m FROM {tbl};")
             meses |= set(df["m"].dropna().tolist())
         except Exception:
             pass
@@ -347,16 +372,36 @@ def get_all_months() -> list[str]:
     return meses
 
 def apply_month_filter(df: pd.DataFrame, month: str) -> pd.DataFrame:
-    if not month or df.empty or "data" not in df.columns:
+    if not month or df.empty:
         return df
-    return df[df["data"].astype(str).str.startswith(month)].copy()
+    col = None
+    if "data" in df.columns: col = "data"
+    if "data_add" in df.columns: col = "data_add"
+    if not col: return df
+    return df[df[col].astype(str).str.startswith(month)].copy()
 
 def apply_reset_if_needed(flag_key: str, defaults: dict):
-    """Se flag estiver True, aplica defaults ANTES dos widgets e desliga a flag."""
     if st.session_state.get(flag_key):
         for k, v in defaults.items():
             st.session_state[k] = v
         st.session_state[flag_key] = False
+
+# ---- cálculos produto
+def per_unit_buy_effective(row) -> float:
+    qtd = max(int(row.get("estoque", 0)), 1)
+    return float(row.get("price_to_buy", 0)) + (float(row.get("tax", 0)) + float(row.get("freight", 0))) / qtd
+
+def gross_profit_unit(row) -> float:
+    buy_eff = per_unit_buy_effective(row)
+    return float(row.get("sold_for", 0)) - float(row.get("amazon_fees", 0)) - float(row.get("prep", 0)) - buy_eff
+
+def gross_roi(row) -> float:
+    buy_eff = per_unit_buy_effective(row)
+    return (gross_profit_unit(row) / buy_eff) if buy_eff > 0 else 0.0
+
+def margin_pct(row) -> float:
+    sf = float(row.get("sold_for", 0))
+    return (gross_profit_unit(row) / sf) if sf > 0 else 0.0
 
 # ----------------------------------
 # Boot
@@ -379,7 +424,7 @@ g_mes = st.selectbox(
     "Filtro de mês (global) — YYYY-MM",
     options=[""] + global_meses,
     index=g_idx,
-    help="Em branco = todos os meses. Afeta Principal, Receitas (FBA), Fluxo de Caixa e Gráficos.",
+    help="Em branco = todos os meses. Afeta Principal, Receitas (FBA), Fluxo de Caixa, Gráficos e Produtos.",
     key="g_mes",
 )
 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
@@ -388,7 +433,7 @@ style_tabs_center_big()
 st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "🏠 Principal", "📦 Receitas (FBA)", "📊 Fluxo de Caixa", "📈 Gráficos", "🏦 Saldos (Amazon)", "🧮 Alocações"
+    "🏠 Principal", "📦 Receitas (FBA)", "📊 Fluxo de Caixa", "📈 Gráficos", "🏦 Saldos (Amazon)", "📋 Produtos (SKU Planner)"
 ])
 
 contas = ["Nubank", "Nomad", "Wise", "Mercury Bank", "WesternUnion"]
@@ -400,7 +445,7 @@ pessoas = ["Bonette", "Daniel"]
 with tab1:
     col1, col2 = st.columns(2)
 
-    # --- GASTOS (reset antes dos widgets)
+    # --- GASTOS
     gastos_defaults = {
         "g_data": date.today(),
         "g_categoria": "Compra de Produto",
@@ -438,7 +483,7 @@ with tab1:
                 st.session_state["g_reset"] = True
                 st.rerun()
 
-    # --- INVESTIMENTOS (reset antes dos widgets)
+    # --- INVESTIMENTOS
     invest_defaults = {
         "i_data": date.today(),
         "i_brl": 0.0,
@@ -529,244 +574,98 @@ with tab1:
         )
 
 # ============================
-# TAB 2 - RECEITAS (FBA) — USD
+# TAB 2 - RECEITAS (FBA) — apenas VENDAS
 # ============================
 with tab2:
-    st.subheader("Operação FBA — Compras (USD) e Recebidos na Amazon (USD)")
+    st.subheader("Dinheiro recebido dentro da Amazon (USD)")
 
-    leftC, rightC = st.columns(2)
+    # produtos para o dropdown
+    df_prod_all = df_sql("""
+        SELECT id, data_add, nome, sku, upc, asin, estoque,
+               price_to_buy, freight, tax, prep, sold_for, amazon_fees,
+               link_amazon, link_fornecedor
+        FROM produtos
+        ORDER BY date(data_add) DESC, id DESC;
+    """)
+    if df_prod_all.empty:
+        st.info("Cadastre produtos na aba **Produtos (SKU Planner)** para registrar vendas.")
+    else:
+        def label_row(r):
+            parts = [str(r["sku"] or "").strip(), str(r["upc"] or "").strip(), str(r["nome"] or "").strip()]
+            label = " | ".join([p for p in parts if p])
+            return f'{label}'
 
-    # --- COMPRAS DE PRODUTO (reset antes dos widgets)
-    pc_defaults = {
-        "pc_data": date.today(),
-        "pc_prod": "",
-        "pc_sku": "",
-        "pc_qty": 1,
-        "pc_custo": 0.0,
-        "pc_taxa": 0.0,
-        "pc_prep": 0.0,
-        "pc_frete": 0.0,
-        "conta_pc": contas[0],
-        "quem_pc": pessoas[0],
-        "obs_pc": "",
-    }
-    apply_reset_if_needed("pc_reset", pc_defaults)
+        labels = {int(r["id"]): label_row(r) for _, r in df_prod_all.iterrows()}
 
-    with leftC:
-        st.markdown("### Compras de Produto (custos em USD, frete não multiplica)")
-        with st.form("form_produto_compra"):
-            data_pc = st.date_input("Data da compra", value=st.session_state.get("pc_data", date.today()),
-                                    format="DD/MM/YYYY", key="pc_data")
-            prod = st.text_input("Nome do produto *", key="pc_prod", placeholder="Ex.: Garrafa Térmica 500ml")
-            sku = st.text_input("SKU (opcional)", key="pc_sku", placeholder="Ex.: BTL-500-INOX")
-            qty = st.number_input("Quantidade", min_value=1, step=1, value=st.session_state.get("pc_qty", 1),
-                                  key="pc_qty")
-            custo_unit = st.number_input("Custo unitário (USD)", min_value=0.0, step=0.01, format="%.2f",
-                                         key="pc_custo")
-            taxa_unit = st.number_input("Taxa unitária (se tiver) (USD)", min_value=0.0, step=0.01, format="%.2f",
-                                        key="pc_taxa")
-            prep_unit = st.number_input("Prep Center unitário (USD)", min_value=0.0, step=0.01, format="%.2f",
-                                        key="pc_prep")
-            frete_total = st.number_input("Frete total da compra (USD) — não multiplica", min_value=0.0, step=0.01,
-                                          format="%.2f", key="pc_frete")
-            conta_pc = st.selectbox("Conta/Banco", contas, key="conta_pc")
-            quem_pc = st.selectbox("Quem comprou/lançou", pessoas, key="quem_pc")
-            obs_pc = st.text_input("Observação (opcional)", key="obs_pc", placeholder="Lote Setembro, fornecedor X")
-
-            subtotal = qty * (custo_unit + taxa_unit + prep_unit)
-            total = subtotal + frete_total
-            st.markdown(f"**Subtotal (qty × (custo + taxa + prep))**: {money_usd(subtotal)}")
-            st.markdown(f"**Total da compra (subtotal + frete)**: {money_usd(total)}")
-
-            if st.form_submit_button("Adicionar compra de produto"):
-                if prod.strip():
-                    add_row("produtos_compra", dict(
-                        data=data_pc.strftime("%Y-%m-%d"), produto=prod.strip(), sku=sku.strip(),
-                        quantidade=int(qty), custo_unit=custo_unit, taxa_unit=taxa_unit,
-                        prep_unit=prep_unit, frete_total=frete_total, total_usd=total,
-                        conta=conta_pc, quem=quem_pc, obs=obs_pc.strip()
-                    ))
-                    st.session_state["pc_reset"] = True
-                    st.rerun()
-                else:
-                    st.warning("Informe o nome do produto.")
-
-        df_pc_all = df_sql("""SELECT id, data, produto, sku, quantidade, custo_unit, taxa_unit, prep_unit, frete_total, 
-                                      COALESCE(total_usd, 0) as total_usd, conta, quem
-                               FROM produtos_compra ORDER BY date(data) DESC, id DESC;""")
-        df_pc = apply_month_filter(df_pc_all, g_mes)
-        total_qtd = int(df_pc["quantidade"].sum()) if not df_pc.empty else 0
-        total_usd = float(df_pc["total_usd"].sum()) if not df_pc.empty else 0.0
-        st.markdown(f"**Totais de compras (USD)** — Quantidade: **{total_qtd}** · Valor: **{money_usd(total_usd)}**")
-        if not df_pc.empty:
-            df_pc_view = pd.DataFrame({
-                "ID": df_pc["id"].astype(int),
-                "Data": df_pc["data"],
-                "Produto": df_pc["produto"],
-                "SKU": df_pc["sku"],
-                "Qtd": df_pc["quantidade"].astype(int),
-                "Subtotal (USD)": (df_pc["quantidade"] * (df_pc["custo_unit"] + df_pc["taxa_unit"] + df_pc["prep_unit"])).map(money_usd),
-                "Frete (USD)": df_pc["frete_total"].map(money_usd),
-                "Total (USD)": df_pc["total_usd"].map(money_usd),
-                "Conta": df_pc["conta"].fillna(""),
-                "Quem": df_pc["quem"].fillna(""),
-            })
-            st.markdown(df_to_clean_html(df_pc_view, "del_pc", "tbl_pc"), unsafe_allow_html=True)
-        else:
-            st.info("Sem compras no filtro atual.")
-        footer_total_badge(
-            "Compras — Total de TODOS os meses",
-            0.0,
-            float(df_pc_all["total_usd"].sum()) if not df_pc_all.empty else 0.0,
-            margin_top=16
-        )
-
-    # --- RECEBIDOS DENTRO DA AMAZON (reset antes dos widgets)
-    ar_defaults = {
-        "ar_data": date.today(),
-        "ar_prod": "",
-        "ar_sku": "",
-        "ar_qty": 0,
-        "ar_val": 0.0,
-        "ar_quem": pessoas[0],
-        "ar_obs": "",
-    }
-    apply_reset_if_needed("ar_reset", ar_defaults)
-
-    with rightC:
-        st.markdown("### Dinheiro recebido dentro da Amazon (USD)")
-        with st.form("form_amz_receitas"):
+        with st.form("form_amz_receitas_only"):
             data_ar = st.date_input("Data do crédito", value=st.session_state.get("ar_data", date.today()),
                                     format="DD/MM/YYYY", key="ar_data")
-            prod_ar = st.text_input("Produto (opcional)", key="ar_prod")
-            sku_ar = st.text_input("SKU (opcional)", key="ar_sku")
-            qty_ar = st.number_input("Quantidade vendida (opcional)", min_value=0, step=1,
-                                     value=st.session_state.get("ar_qty", 0), key="ar_qty")
+            pid = st.selectbox("Produto vendido (SKU | UPC | Nome)", options=list(labels.keys()),
+                               format_func=lambda x: labels.get(int(x), str(x)))
+            qty_ar = st.number_input("Quantidade vendida", min_value=1, step=1,
+                                     value=max(int(st.session_state.get("ar_qty", 1)), 1), key="ar_qty")
             val_ar = st.number_input("Valor recebido (USD) dentro da Amazon", min_value=0.0, step=0.01,
                                      format="%.2f", key="ar_val")
             quem_ar = st.selectbox("Quem lançou", pessoas, key="ar_quem")
             obs_ar = st.text_input("Observação (opcional)", key="ar_obs")
 
-            if st.form_submit_button("Adicionar recebimento (Amazon)"):
+            submitted = st.form_submit_button("Adicionar recebimento (Amazon)")
+            if submitted:
                 add_row("amazon_receitas", dict(
-                    data=data_ar.strftime("%Y-%m-%d"), produto=prod_ar.strip(), sku=sku_ar.strip(),
-                    quantidade=int(qty_ar), valor_usd=val_ar, quem=quem_ar, obs=obs_ar.strip()
+                    data=data_ar.strftime("%Y-%m-%d"),
+                    produto_id=int(pid),
+                    quantidade=int(qty_ar),
+                    valor_usd=float(val_ar),
+                    quem=quem_ar,
+                    obs=obs_ar.strip(),
+                    produto=labels[int(pid)],
+                    sku=df_prod_all.set_index("id").loc[int(pid)]["sku"]
+                        if int(pid) in df_prod_all.set_index("id").index else ""
                 ))
-                st.session_state["ar_reset"] = True
+                # baixa estoque
+                conn = get_conn()
+                conn.execute("""
+                    UPDATE produtos
+                       SET estoque = CASE WHEN estoque - ? < 0 THEN 0 ELSE estoque - ? END
+                     WHERE id=?;
+                """, (int(qty_ar), int(qty_ar), int(pid)))
+                conn.commit()
+                st.success("Recebimento registrado e estoque atualizado.")
                 st.rerun()
 
-        df_ar_all = df_sql("""SELECT id, data, produto, sku, quantidade, 
-                                     COALESCE(valor_usd, 0) as valor_usd, quem
+        # listagem
+        df_ar_all = df_sql("""SELECT id, data, produto_id, quantidade, valor_usd, quem, obs
                               FROM amazon_receitas ORDER BY date(data) DESC, id DESC;""")
-        df_ar = apply_month_filter(df_ar_all, g_mes)
+        df_ar = apply_month_filter(df_ar_all.copy(), g_mes) if g_mes else df_ar_all.copy()
         tot_ar_usd = float(df_ar["valor_usd"].sum()) if not df_ar.empty else 0.0
         tot_ar_qty = int(df_ar["quantidade"].sum()) if not df_ar.empty else 0
-        st.markdown(f"**Totais de recebidos (Amazon)** — Quantidade vendida: **{tot_ar_qty}** · Valor: **{money_usd(tot_ar_usd)}**")
+
+        # >>> NOVO: banner centralizado com total vendido (USD) e quantidade
+        primary_card_centered(
+            f"<div style='font-size:20px; font-weight:800;'>Total vendido (USD): {escape(money_usd(tot_ar_usd))}</div>"
+            f"<div style='margin-top:4px;'>Quantidade vendida: <b>{tot_ar_qty}</b></div>",
+            margin_top_px=4
+        )
+
         if not df_ar.empty:
+            df_prod = df_prod_all.set_index("id") if not df_prod_all.empty else pd.DataFrame()
+
+            def getp(pid, col, default=""):
+                try: return df_prod.loc[int(pid)][col]
+                except Exception: return default
+
             df_ar_view = pd.DataFrame({
                 "ID": df_ar["id"].astype(int),
-                "Data": df_ar["data"], "Produto": df_ar["produto"], "SKU": df_ar["sku"],
+                "Data": df_ar["data"],
+                "Produto": df_ar["produto_id"].map(lambda x: getp(x, "nome","")),
+                "SKU": df_ar["produto_id"].map(lambda x: getp(x, "sku","")),
                 "Qtd": df_ar["quantidade"].astype(int),
-                "Valor (USD)": df_ar["valor_usd"].map(money_usd),
+                "Valor recebido (USD)": df_ar["valor_usd"].map(money_usd),
                 "Quem": df_ar["quem"].fillna(""),
             })
             st.markdown(df_to_clean_html(df_ar_view, "del_ar", "tbl_ar"), unsafe_allow_html=True)
         else:
             st.info("Sem recebidos no filtro atual.")
-        footer_total_badge(
-            "Recebidos (Amazon) — Total de TODOS os meses",
-            0.0,
-            float(df_ar_all["valor_usd"].sum()) if not df_ar_all.empty else 0.0,
-            margin_top=16
-        )
-
-    # --- DEPÓSITOS/REPASSE FBA (reset antes dos widgets)
-    r_defaults = {
-        "r_data": date.today(),
-        "r_desc": "",
-        "r_bruto": 0.0,
-        "r_cogs": 0.0,
-        "r_taxas": 0.0,
-        "r_ads": 0.0,
-        "r_frete": 0.0,
-        "r_descs": 0.0,
-        "conta_rec": contas[0],
-        "quem_rec": pessoas[0],
-    }
-    apply_reset_if_needed("r_reset", r_defaults)
-
-    with st.expander("➕ Depósitos FBA (repasse para banco) — com cálculo de Lucro (USD)"):
-        with st.form("form_receita_repasse"):
-            c0, c1 = st.columns([1,2])
-            with c0:
-                data_r = st.date_input("Data do recebimento (repasse)", value=st.session_state.get("r_data", date.today()),
-                                       format="DD/MM/YYYY", key="r_data")
-            with c1:
-                desc_r = st.text_input("Descrição", value=st.session_state.get("r_desc",""),
-                                       placeholder="Ex.: Depósito Amazon FBA, cycle 2025-09", key="r_desc")
-
-            col_a, col_b = st.columns(2)
-            with col_a:
-                bruto_usd = st.number_input("Bruto recebido (USD)", 0.0, step=0.01, format="%.2f", key="r_bruto")
-                cogs_usd  = st.number_input("COGS (USD)", 0.0, step=0.01, format="%.2f", key="r_cogs")
-                taxas_usd = st.number_input("Taxas Amazon (USD)", 0.0, step=0.01, format="%.2f", key="r_taxas")
-            with col_b:
-                ads_usd   = st.number_input("Anúncios/PPC (USD)", 0.0, step=0.01, format="%.2f", key="r_ads")
-                frete_usd = st.number_input("Frete/Logística (USD)", 0.0, step=0.01, format="%.2f", key="r_frete")
-                desc_usd  = st.number_input("Devoluções/Descontos (USD)", 0.0, step=0.01, format="%.2f", key="r_descs")
-
-            lucro_usd = bruto_usd - (cogs_usd + taxas_usd + ads_usd + frete_usd + desc_usd)
-            st.markdown(f"**Lucro calculado (USD): {money_usd(lucro_usd)}**")
-
-            metodo_r = st.selectbox("Método de recebimento",
-                                    ["Pix","Transferência","Boleto","Cartão de Crédito","Dinheiro"])
-            conta_r  = st.selectbox("Conta/Banco", contas, key="conta_rec")
-            quem_r   = st.selectbox("Responsável (quem lançou)", pessoas, key="quem_rec")
-
-            if st.form_submit_button("Adicionar depósito FBA (repasse)"):
-                add_row("receitas", dict(
-                    data=data_r.strftime("%Y-%m-%d"), origem="FBA", descricao=desc_r,
-                    bruto=bruto_usd, cogs=cogs_usd, taxas_amz=taxas_usd, ads=ads_usd,
-                    frete=frete_usd, descontos=desc_usd, lucro=lucro_usd,
-                    valor_brl=0, valor_usd=bruto_usd,  # bruto em USD
-                    metodo=metodo_r, conta=conta_r, quem=quem_r
-                ))
-                st.session_state["r_reset"] = True
-                st.rerun()
-
-        df_r_all = df_sql("""SELECT id, data, descricao, bruto, cogs, taxas_amz, ads, frete, descontos, lucro,
-                                    valor_usd, metodo, conta, quem
-                             FROM receitas ORDER BY date(data) DESC, id DESC;""")
-        df_r = apply_month_filter(df_r_all, g_mes)
-        tot_bruto = float(df_r["bruto"].sum()) if not df_r.empty else 0.0
-        tot_lucro = float(df_r["lucro"].sum()) if not df_r.empty else 0.0
-        st.markdown(f"**Totais de Depósitos FBA (USD)** — Bruto: {money_usd(tot_bruto)} · Lucro: {money_usd(tot_lucro)}")
-
-        if not df_r.empty:
-            df_view_r = pd.DataFrame({
-                "ID": df_r["id"].astype(int),
-                "Data": df_r["data"],
-                "Descrição": df_r["descricao"].fillna(""),
-                "Bruto (USD)": df_r["bruto"].map(money_usd),
-                "COGS (USD)": df_r["cogs"].map(money_usd),
-                "Taxas AMZ (USD)": df_r["taxas_amz"].map(money_usd),
-                "Ads (USD)": df_r["ads"].map(money_usd),
-                "Frete (USD)": df_r["frete"].map(money_usd),
-                "Descontos (USD)": df_r["descontos"].map(money_usd),
-                "Lucro (USD)": df_r["lucro"].map(money_usd),
-                "Método": df_r["metodo"].fillna(""),
-                "Conta": df_r["conta"].fillna(""),
-                "Quem": df_r["quem"].fillna(""),
-            })
-            st.markdown(df_to_clean_html(df_view_r, "del_rec", "tbl_rec"), unsafe_allow_html=True)
-        else:
-            st.info("Sem depósitos/repasse no filtro atual.")
-        footer_total_badge(
-            "Depósitos FBA — Total de TODOS os meses",
-            0.0,
-            float(df_r_all["bruto"].sum()) if not df_r_all.empty else 0.0,
-            margin_top=16
-        )
 
 # ============================
 # TAB 3 - FLUXO DE CAIXA
@@ -778,7 +677,6 @@ with tab3:
     df_i = df_sql("SELECT date(data) as data, valor_brl, valor_usd FROM investimentos;")
     df_r = df_sql("SELECT date(data) as data, 0 as valor_brl, bruto as valor_usd, lucro FROM receitas;")
 
-    # aplica filtro de mês global na base diária antes de agrupar
     df_g_f = apply_month_filter(df_g, g_mes) if g_mes else df_g
     df_i_f = apply_month_filter(df_i, g_mes) if g_mes else df_i
     df_r_f = apply_month_filter(df_r, g_mes) if g_mes else df_r
@@ -829,7 +727,7 @@ with tab3:
                 dfv[col]=dfv[col].map(money_usd)
             st.dataframe(dfv.rename(columns={"mes":"Mês"}), use_container_width=True, hide_index=True)
 
-        # Totais gerais (sempre TODOS os meses)
+        # Totais gerais
         p_usd_all = pd.concat([
             monthly(df_g,"Despesas (Gastos)")[["mes","tipo","usd"]],
             monthly(df_i,"Despesas (Invest.)")[["mes","tipo","usd"]],
@@ -844,11 +742,6 @@ with tab3:
         st.markdown("### Totais Gerais (USD) — soma de todos os meses")
         summary_card_usd("Totais gerais (USD)", tot_receita_usd, tot_desp_usd, tot_result_usd)
 
-        bruto_total=float(m_r["usd"].sum()) if not m_r.empty else 0.0
-        lucro_total=float(df_r_f["lucro"].sum()) if not df_r_f.empty else 0.0
-        margem_total=(lucro_total/bruto_total*100.0) if bruto_total>0 else 0.0
-        st.markdown(f"**Margem total FBA (USD) no período filtrado:** {margem_total:.1f}% · **Lucro total:** {money_usd(lucro_total)} · **Bruto total:** {money_usd(bruto_total)}")
-
 # ============================
 # TAB 4 - GRÁFICOS
 # ============================
@@ -859,7 +752,6 @@ with tab4:
     df_i = df_sql("SELECT date(data) as data, valor_brl, valor_usd FROM investimentos;")
     df_r = df_sql("SELECT date(data) as data, 0 as valor_brl, bruto as valor_usd, lucro FROM receitas;")
 
-    # filtro global na base diária antes da agregação
     if g_mes:
         df_g = apply_month_filter(df_g, g_mes)
         df_i = apply_month_filter(df_i, g_mes)
@@ -900,23 +792,6 @@ with tab4:
         )
         st.altair_chart(barsu+lineu, use_container_width=True)
 
-        st.markdown("#### Margem (%) — FBA (USD)")
-        mr = agg[agg["tipo"]=="Receitas (FBA)"][["mes","USD","Lucro"]].copy()
-        if not mr.empty:
-            mr["Margem"] = (mr["Lucro"] / mr["USD"]).replace([pd.NA, float("inf")], 0.0) * 100
-            chart_m = alt.Chart(mr).mark_line(point=True).encode(
-                x="mes:N", y=alt.Y("Margem:Q", title="Margem (%)"), tooltip=["mes","Margem"]
-            )
-            st.altair_chart(chart_m, use_container_width=True)
-
-        st.markdown("#### BRL (opcional)")
-        brl=agg[["mes","tipo","BRL"]].rename(columns={"BRL":"valor"})
-        bars=alt.Chart(brl).mark_bar().encode(
-            x=alt.X("mes:N",sort=alt.SortField("mes",order="ascending"),title="Mês"),
-            y=alt.Y("valor:Q",title="Valor (BRL)"), color="tipo:N", tooltip=["mes","tipo","valor"]
-        )
-        st.altair_chart(bars, use_container_width=True)
-
 # ============================
 # TAB 5 - SALDOS (AMAZON)
 # ============================
@@ -950,43 +825,114 @@ with tab5:
         st.info("Sem snapshots cadastrados.")
 
 # ============================
-# TAB 6 - ALOCAÇÕES (PROFIT FIRST)
+# TAB 6 - PRODUTOS (SKU PLANNER)
 # ============================
 with tab6:
-    st.subheader("Regras de Alocação (Profit First)")
-    with st.form("form_regras"):
-        colr1, colr2 = st.columns([2,1])
-        with colr1: nome = st.text_input("Nome do balde", value="Profit")
-        with colr2: pct = st.number_input("Percentual (0–100%)", min_value=0.0, max_value=100.0, value=10.0, step=1.0)
-        if st.form_submit_button("Salvar/Atualizar regra"):
-            try: add_row("alocacoes_regra", dict(nome=nome, pct=pct/100.0))
-            except Exception: get_conn().execute("UPDATE alocacoes_regra SET pct=? WHERE nome=?;", (pct/100.0, nome)).connection.commit()
-            st.rerun()
+    st.subheader("Cadastro e Controle de Produtos (Estoque)")
 
-    df_regra = df_sql("SELECT nome, pct FROM alocacoes_regra ORDER BY nome;")
-    if not df_regra.empty:
-        df_view_rg = df_regra.copy(); df_view_rg["Percentual"]=(df_view_rg["pct"]*100).map(lambda x:f"{x:.0f}%")
-        st.dataframe(df_view_rg[["nome","Percentual"]].rename(columns={"nome":"Balde"}), use_container_width=True, hide_index=True)
-    else:
-        st.info("Nenhuma regra cadastrada ainda. Adicione acima.")
+    # defaults
+    p_defaults = {
+        "p_data": date.today(), "p_nome":"", "p_sku":"", "p_upc":"", "p_asin":"",
+        "p_estoque":0, "p_buy":0.0, "p_frete":0.0, "p_tax":0.0, "p_prep":2.0,
+        "p_soldfor":0.0, "p_amzfees":0.0, "p_link_amz":"", "p_link_forn":""
+    }
+    apply_reset_if_needed("p_reset", p_defaults)
 
-    st.markdown("---")
-    st.subheader("Distribuição sugerida do lucro por mês (USD)")
-    meses = df_sql("SELECT DISTINCT strftime('%Y-%m', date(data)) as mes FROM receitas ORDER BY mes;")["mes"].tolist()
-    if meses:
-        mes_ref = st.selectbox("Escolha o mês", meses, index=len(meses)-1)
-        tot_lucro_mes = df_sql(f"SELECT COALESCE(SUM(lucro),0) AS x FROM receitas WHERE strftime('%Y-%m', date(data))='{mes_ref}';").iloc[0]["x"]
-        st.markdown(f"**Lucro do mês {mes_ref}: {money_usd(tot_lucro_mes)}**")
+    with st.form("form_produto"):
+        c1,c2 = st.columns([2,1])
+        with c1:
+            data_p = st.date_input("Data adicionada na Amazon", value=st.session_state.get("p_data", date.today()),
+                                   format="DD/MM/YYYY", key="p_data")
+            nome = st.text_input("Nome", value=st.session_state.get("p_nome",""), key="p_nome")
+            sku = st.text_input("SKU", value=st.session_state.get("p_sku",""), key="p_sku")
+            upc = st.text_input("UPC", value=st.session_state.get("p_upc",""), key="p_upc")
+            asin = st.text_input("ASIN", value=st.session_state.get("p_asin",""), key="p_asin")
+            link_amz = st.text_input("Link do produto na Amazon", value=st.session_state.get("p_link_amz",""), key="p_link_amz")
+            link_forn = st.text_input("Link do fornecedor", value=st.session_state.get("p_link_forn",""), key="p_link_forn")
+        with c2:
+            estoque = st.number_input("Estoque (qtd)", min_value=0, step=1, value=int(st.session_state.get("p_estoque",0)), key="p_estoque")
+            buy = st.number_input("Price to Buy (USD, unitário)", min_value=0.0, step=0.01, format="%.2f", key="p_buy")
+            frete = st.number_input("Frete total do lote (USD)", min_value=0.0, step=0.01, format="%.2f", key="p_frete")
+            tax = st.number_input("TAX do lote (USD)", min_value=0.0, step=0.01, format="%.2f", key="p_tax")
+            prep = st.number_input("PREP (USD)", min_value=0.0, step=0.01, format="%.2f", value=2.0, key="p_prep")
+            soldfor = st.number_input("Sold for (USD)", min_value=0.0, step=0.01, format="%.2f", key="p_soldfor")
+            amzfees = st.number_input("Amazon Fees (USD, unitário)", min_value=0.0, step=0.01, format="%.2f", key="p_amzfees")
 
-        df_regra2 = df_sql("SELECT nome, pct FROM alocacoes_regra ORDER BY nome;")
-        if not df_regra2.empty:
-            dist = {row["nome"]: round(float(tot_lucro_mes) * float(row["pct"]), 2) for _, row in df_regra2.iterrows()}
-            for nome_b, val in dist.items():
-                st.markdown(f"- **{nome_b}**: {money_usd(val)}")
-            if st.button(f"Registrar alocação de {mes_ref}"):
-                for nome_b, val in dist.items():
-                    add_row("alocacoes_execucao", dict(mes=mes_ref, nome=nome_b, valor_brl=0, valor_usd=val))
-                st.success("Alocação registrada!")
+        if st.form_submit_button("Salvar produto"):
+            if nome.strip():
+                add_row("produtos", dict(
+                    data_add=data_p.strftime("%Y-%m-%d"), nome=nome.strip(), sku=sku.strip(), upc=upc.strip(), asin=asin.strip(),
+                    estoque=int(estoque), price_to_buy=buy, freight=frete, tax=tax, prep=prep, sold_for=soldfor,
+                    amazon_fees=amzfees, link_amazon=link_amz.strip(), link_fornecedor=link_forn.strip()
+                ))
+                st.session_state["p_reset"] = True
+                st.success("Produto salvo!")
                 st.rerun()
+            else:
+                st.warning("Informe o nome do produto.")
+
+    # listar produtos
+    dfp_all = df_sql("""
+        SELECT id, data_add, nome, sku, upc, asin, estoque,
+               price_to_buy, freight, tax, prep, sold_for, amazon_fees,
+               link_amazon, link_fornecedor
+        FROM produtos ORDER BY date(data_add) DESC, id DESC;
+    """)
+    dfp = apply_month_filter(dfp_all.copy(), g_mes) if g_mes else dfp_all.copy()
+
+    if not dfp.empty:
+        calc = dfp.to_dict("records")
+        rows=[]
+        for r in calc:
+            buy_eff = per_unit_buy_effective(r)
+            gp = gross_profit_unit(r)
+            roi = gross_roi(r)
+            mrg = margin_pct(r)
+            rows.append({
+                "ID": int(r["id"]),
+                "Data": r["data_add"],
+                "Nome": r["nome"],
+                "SKU": r["sku"],
+                "UPC": r["upc"],
+                "ASIN": r["asin"],
+                "Estoque": int(r["estoque"]),
+                "Price to Buy": money_usd(r["price_to_buy"]),
+                "Amazon Fees": money_usd(r["amazon_fees"]),
+                "PREP": money_usd(r["prep"]),
+                "Sold for": money_usd(r["sold_for"]),
+                "Gross Profit": money_usd(gp),
+                "Gross ROI": f"{roi*100:.2f}%",
+                "Margem %": f"{mrg*100:.2f}%",
+                "Amazon": f'<a href="{escape(str(r["link_amazon"] or ""))}" target="_blank">Link</a>' if r["link_amazon"] else "",
+                "Fornecedor": f'<a href="{escape(str(r["link_fornecedor"] or ""))}" target="_blank">Link</a>' if r["link_fornecedor"] else "",
+            })
+        df_view = pd.DataFrame(rows)
+        st.markdown(df_to_clean_html(df_view, "del_pc", "tbl_prod"), unsafe_allow_html=True)
     else:
-        st.info("Cadastre receitas FBA para escolher um mês.")
+        st.info("Sem produtos no filtro atual.")
+
+    # ----- CARD de lucro realizado no período (sem tag solta)
+    dr = df_sql("""SELECT ar.id, ar.data, ar.produto_id, ar.quantidade
+                   FROM amazon_receitas ar
+                   ORDER BY date(ar.data) DESC, ar.id DESC;""")
+    dr = apply_month_filter(dr, g_mes) if g_mes else dr
+
+    total_lucro = 0.0
+    if not dr.empty and not dfp_all.empty:
+        prods = dfp_all.set_index("id").to_dict("index")
+        for _, row in dr.iterrows():
+            prod = prods.get(int(row["produto_id"]))
+            if not prod: continue
+            gp_u = gross_profit_unit(prod)
+            qtd = int(row["quantidade"])
+            total_lucro += gp_u * qtd
+
+        explic_html = (
+            f"<div style='font-size:20px; font-weight:800;'>Lucro realizado no período selecionado: "
+            f"{escape(money_usd(total_lucro))}</div>"
+            "<div style='margin-top:6px; font-weight:600;'>Como calculamos?</div>"
+            "<div>Lucro = Σ (Gross Profit por unidade × quantidade vendida).</div>"
+            "<div>Onde: Gross Profit = Sold for – Amazon Fees – PREP – "
+            "(Price to Buy + (TAX + Frete) ÷ quantidade).</div>"
+        )
+        primary_card_centered(explic_html, margin_top_px=24)
