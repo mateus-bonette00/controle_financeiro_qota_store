@@ -79,6 +79,23 @@ def money_usd(x):
     except Exception: return "$ 0.00"
     return f"$ {v:,.2f}"
 
+# ====== Mês nomeado (pt-BR) ======
+MESES_PT = {
+    1: "janeiro", 2: "fevereiro", 3: "março", 4: "abril",
+    5: "maio", 6: "junho", 7: "julho", 8: "agosto",
+    9: "setembro", 10: "outubro", 11: "novembro", 12: "dezembro",
+}
+
+def month_label(yyyy_mm: str) -> str:
+    """Converte 'YYYY-MM' -> 'MM de <mês> (YYYY)'"""
+    try:
+        y, m = yyyy_mm.split("-")
+        mi = int(m)
+        nome = MESES_PT.get(mi, m)
+        return f"{m} de {nome} ({y})"
+    except Exception:
+        return yyyy_mm
+
 # ----------------------------------
 # Navegação por query (exclusões)
 # ----------------------------------
@@ -131,6 +148,7 @@ def inject_global_css():
                 linear-gradient(180deg, #0a122b 0%, #0d1735 40%, #0a122b 100%);
         }}
         .stMainBlockContainer {{ padding-top: 12px; }}
+        /* (mantive sua regra original) */
         h1, h2, h3, h4, h5, h6, .stMarkdown p, label, span {{ color: {WHITE} !important; }}
         .stMarkdown a {{ color: {ACCENT} !important; }}
 
@@ -154,16 +172,56 @@ def inject_global_css():
             color: {WHITE} !important;
         }}
 
-        .stButton > button {{
-            background: linear-gradient(135deg, {ACCENT}, #b30000);
-            color: {WHITE}; border: none; border-radius: 12px;
-            padding: 10px 16px; font-weight: 800; letter-spacing:.3px;
-            box-shadow: 0 10px 24px rgba(254,0,0,.35);
+        .st-emotion-cache-1anq8dj {{
+            display: inline-flex;
+            -webkit-box-align: center;
+            align-items: center;
+            -webkit-box-pack: center;
+            justify-content: center;
+
+            background: linear-gradient(135deg, #FE0000, #b30000);
+            color: #FFFFFF;
+            border: none;
+            border-radius: 12px;
+            padding: 10px 16px;
+            font-weight: 800;
+            letter-spacing: .3px;
+            box-shadow: 0 10px 24px rgba(254, 0, 0, .35);
+            transition: transform .06s ease, box-shadow .12s ease, filter .12s ease, outline-color .12s ease;
+            cursor: pointer;
+            outline: 2px solid rgba(255,255,255,0.0);
+            outline-offset: 2px;
         }}
-        .stButton > button:hover {{
-            filter: brightness(1.05);
+        .st-emotion-cache-1anq8dj:hover {{ 
+            filter: brightness(1.06);
             transform: translateY(-1px);
             box-shadow: 0 14px 34px rgba(254,0,0,.45);
+        }}
+
+        /* ===== Botões (mantidos) ===== */
+        .stButton > button {{
+            background: linear-gradient(135deg, {ACCENT}, #b30000);
+            color: {WHITE}; border: none;
+            border-radius: 12px;
+            padding: 10px 16px; font-weight: 800; letter-spacing:.3px;
+            box-shadow: 0 10px 24px rgba(254,0,0,.35);
+            transition: transform .06s ease, box-shadow .12s ease, filter .12s ease, outline-color .12s ease;
+            cursor: pointer;
+            outline: 2px solid rgba(255,255,255,0.0);
+            outline-offset: 2px;
+        }}
+        .stButton > button:hover {{
+            filter: brightness(1.06);
+            transform: translateY(-1px);
+            box-shadow: 0 14px 34px rgba(254,0,0,.45);
+        }}
+        .stButton > button:active {{
+            transform: translateY(0px) scale(0.99);
+            box-shadow: 0 8px 20px rgba(254,0,0,.35);
+        }}
+        .stButton > button:focus-visible {{
+            outline-color: rgba(254,0,0,.65);
+            box-shadow: 0 0 0 3px rgba(254,0,0,.28), 0 12px 28px rgba(254,0,0,.40);
         }}
 
         table.fin {{
@@ -173,6 +231,7 @@ def inject_global_css():
             border-radius: 14px;
             box-shadow: 0 16px 40px rgba(0,0,0,.45);
             overflow: hidden;
+            margin-top: 28px !important; /* respiro abaixo dos cards */
         }}
         table.fin thead th {{
             background: linear-gradient(135deg, {PRIMARY}, #1c2f6a);
@@ -264,21 +323,143 @@ def inject_global_css():
             border:1px solid rgba(255,255,255,.10);
             box-shadow: 0 22px 60px rgba(0,0,0,.60), 0 0 0 1px rgba(255,255,255,.04) inset;
         }}
+
+        /* =======================================================
+           TÍTULOS — H1 suave; H2–H6 com cortes do Figma
+           ======================================================= */
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,900;1,900&display=swap');
+
+        /* H1 (como você aprovou) */
+        div[data-testid="stMarkdownContainer"] h1, h1 {{
+          font-family: 'Poppins', sans-serif !important;
+          font-weight: 900 !important;
+          background: linear-gradient(90deg, #2F529E 0%, #2F529E 28%, #FE0000 100%) !important;
+          -webkit-background-clip: text !important;
+          background-clip: text !important;
+          -webkit-text-fill-color: transparent !important;
+          color: transparent !important;
+          filter: saturate(1.25) contrast(3.15);
+          text-shadow: 5px 5px 15px 0px rgba(128, 128, 128, 0.25);
+        }}
+
+        /* H2–H6 (stops do Figma: 34.77% / 77.81%) */
+        :root {{
+          --mini-title-grad: linear-gradient(90deg, #2F529E 10%,#FE0000 23%,#FE0000 45%, #FE0000 77.81%);
+        }}
+
+        /* Zera cor sólida herdada (heading + filhos) */
+        div[data-testid="stMarkdownContainer"] h2,
+        div[data-testid="stMarkdownContainer"] h3,
+        div[data-testid="stMarkdownContainer"] h4,
+        div[data-testid="stMarkdownContainer"] h5,
+        div[data-testid="stMarkdownContainer"] h6,
+        div[data-testid="stMarkdownContainer"] h2 *,
+        div[data-testid="stMarkdownContainer"] h3 *,
+        div[data-testid="stMarkdownContainer"] h4 *,
+        div[data-testid="stMarkdownContainer"] h5 *,
+        div[data-testid="stMarkdownContainer"] h6 * {{
+          color: transparent !important;
+          -webkit-text-fill-color: transparent !important;
+        }}
+
+        /* Aplica o gradiente (heading + filhos) */
+        div[data-testid="stMarkdownContainer"] h2,
+        div[data-testid="stMarkdownContainer"] h2 *,
+        div[data-testid="stMarkdownContainer"] h3,
+        div[data-testid="stMarkdownContainer"] h3 *,
+        div[data-testid="stMarkdownContainer"] h4,
+        div[data-testid="stMarkdownContainer"] h4 *,
+        div[data-testid="stMarkdownContainer"] h5,
+        div[data-testid="stMarkdownContainer"] h5 *,
+        div[data-testid="stMarkdownContainer"] h6,
+        div[data-testid="stMarkdownContainer"] h6 * {{
+          background: var(--mini-title-grad) !important;
+          -webkit-background-clip: text !important;
+          background-clip: text !important;
+          font-family: 'Poppins', sans-serif !important;
+          font-weight: 900 !important;
+          filter: saturate(1.25) contrast(3.15);
+          text-shadow: 5px 5px 15px 0px rgba(128, 128, 128, 0.25);
+        }}
+
+        /* tamanhos (mantidos) */
+        h1 {{ font-size: 44px !important; line-height: 100% !important; }}
+        h2 {{ font-size: 36px !important; }}
+        h3 {{ font-size: 28px !important; }}
+        h4 {{ font-size: 22px !important; }}
+        h5 {{ font-size: 18px !important; }}
+        h6 {{ font-size: 16px !important; }}
+
+        /* =======================================================
+           GARANTIR PESO 900 REAL (inclusive em spans/b/strong)
+           ======================================================= */
+        div[data-testid="stMarkdownContainer"] h1,
+        div[data-testid="stMarkdownContainer"] h2,
+        div[data-testid="stMarkdownContainer"] h3,
+        div[data-testid="stMarkdownContainer"] h4,
+        div[data-testid="stMarkdownContainer"] h5,
+        div[data-testid="stMarkdownContainer"] h6,
+        div[data-testid="stMarkdownContainer"] h1 *,
+        div[data-testid="stMarkdownContainer"] h2 *,
+        div[data-testid="stMarkdownContainer"] h3 *,
+        div[data-testid="stMarkdownContainer"] h4 *,
+        div[data-testid="stMarkdownContainer"] h5 *,
+        div[data-testid="stMarkdownContainer"] h6 * {{
+          font-family: 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, sans-serif !important;
+          font-weight: 900 !important;
+          font-variation-settings: "wght" 900;
+          font-synthesis: none;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+        }}
+
+        /* evita que <b>/<strong> dentro do título derrubem p/ 700 */
+        div[data-testid="stMarkdownContainer"] h1 b,
+        div[data-testid="stMarkdownContainer"] h1 strong,
+        div[data-testid="stMarkdownContainer"] h2 b,
+        div[data-testid="stMarkdownContainer"] h2 strong,
+        div[data-testid="stMarkdownContainer"] h3 b,
+        div[data-testid="stMarkdownContainer"] h3 strong,
+        div[data-testid="stMarkdownContainer"] h4 b,
+        div[data-testid="stMarkdownContainer"] h4 strong,
+        div[data-testid="stMarkdownContainer"] h5 b,
+        div[data-testid="stMarkdownContainer"] h5 strong,
+        div[data-testid="stMarkdownContainer"] h6 b,
+        div[data-testid="stMarkdownContainer"] h6 strong {{
+          font-weight: inherit !important;
+        }}
+
+        /* opcional: micro-stroke p/ dar “corpo” nos menores */
+        div[data-testid="stMarkdownContainer"] h2,
+        div[data-testid="stMarkdownContainer"] h3,
+        div[data-testid="stMarkdownContainer"] h4,
+        div[data-testid="stMarkdownContainer"] h5,
+        div[data-testid="stMarkdownContainer"] h6 {{
+          -webkit-text-stroke: 0.25px rgba(0,0,0,0.08);
+        }}
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-def metric_duo_cards(section_title: str, brl: float, usd: float):
+
+
+
+
+
+
+def metric_duo_cards(section_title: str, brl: float, usd: float, month: str | None = None):
+    # se vier mês (YYYY-MM), mostra "— <mês nomeado (YYYY)>"
+    suffix = f" — {month_label(month)}" if month else ""
     st.markdown(
         f"""
         <div class="metric-duo">
             <div class="metric-card brl">
-                <div class="title">{escape(section_title)} — BRL</div>
+                <div class="title">{escape(section_title + suffix)} — BRL</div>
                 <div class="value">{escape(money_brl(brl))}</div>
             </div>
             <div class="metric-card usd">
-                <div class="title">{escape(section_title)} — USD</div>
+                <div class="title">{escape(section_title + suffix)} — USD</div>
                 <div class="value">{escape(money_usd(usd))}</div>
             </div>
         </div>
@@ -560,20 +741,22 @@ inject_global_css()
 # ----------------------------------
 # Header + Tabs
 # ----------------------------------
-render_logo_centered("logo-qota-storee-semfundo.png", width=260)
+render_logo_centered("logo-qota-storee-semfundo.png", width=295)
 st.markdown(
     "<h1 style='text-align:center; font-weight:900; letter-spacing:.3px; margin-top:4px;'>Controle Financeiro Qota Store</h1>",
     unsafe_allow_html=True,
 )
 
-# Filtro de mês global
+# Filtro de mês global (com rótulo amigável)
 global_meses = get_all_months()
 g_default = st.session_state.get("g_mes", "")
-g_idx = ([""] + global_meses).index(g_default) if g_default in ([""] + global_meses) else 0
+g_options = [""] + global_meses
+g_idx = g_options.index(g_default) if g_default in g_options else 0
 g_mes = st.selectbox(
     "Filtro de mês (global) — YYYY-MM",
-    options=[""] + global_meses,
+    options=g_options,
     index=g_idx,
+    format_func=lambda v: ("" if v == "" else month_label(v)),
     help="Em branco = todos os meses. Afeta Principal, Receitas (FBA), Fluxo de Caixa, Gráficos e Produtos.",
     key="g_mes",
 )
@@ -638,7 +821,7 @@ with tab1:
         df_g = apply_month_filter(df_g_all, g_mes)
         tot_g_brl = float(df_g["valor_brl"].sum()) if not df_g.empty else 0.0
         tot_g_usd = float(df_g["valor_usd"].sum()) if not df_g.empty else 0.0
-        metric_duo_cards("Totais de Gastos (mês filtrado)" if g_mes else "Totais de Gastos", tot_g_brl, tot_g_usd)
+        metric_duo_cards("Totais de Gastos", tot_g_brl, tot_g_usd, month=(g_mes or None))
 
         if not df_g.empty:
             df_view = pd.DataFrame({
@@ -668,8 +851,8 @@ with tab1:
         df_i = apply_month_filter(df_i_all, g_mes)
         tot_i_brl = float(df_i["valor_brl"].sum()) if not df_i.empty else 0.0
         tot_i_usd = float(df_i["valor_usd"].sum()) if not df_i.empty else 0.0
-        metric_duo_cards("Totais de Investimentos (mês filtrado)" if g_mes else "Totais de Investimentos",
-                         tot_i_brl, tot_i_usd)
+        metric_duo_cards("Totais de Investimentos",
+                         tot_i_brl, tot_i_usd, month=(g_mes or None))
 
         if not df_i.empty:
             df_view_i = pd.DataFrame({
@@ -696,8 +879,8 @@ with tab1:
 with tab2:
     st.subheader("Produtos Vendidos (Receitas FBA)")
 
+    # ---- Credenciais SP-API
     def _secret(k: str, default: str = "") -> str:
-    # Lê do st.secrets (local) ou do ambiente (Render)
         try:
             return st.secrets[k]
         except Exception:
@@ -710,7 +893,6 @@ with tab2:
         aws_access_key    = _secret("AWS_ACCESS_KEY_ID"),
         aws_secret_key    = _secret("AWS_SECRET_ACCESS_KEY"),
     )
-
 
     # ---- Teste básico SP-API (expander)
     with st.expander("Testar conexão com a Amazon (clique para abrir)"):
@@ -820,14 +1002,12 @@ with tab2:
             cat = CatalogItems(marketplace=Marketplaces.US, credentials=SPAPI_CREDS)
             ci = cat.get_catalog_item(marketplaceIds=[Marketplaces.US.marketplace_id], asin=asin).payload
             attr = ci.get("attributes") or {}
-            # tenta vários campos comuns de título/nome
             for key in ["item_name","productTitle","title"]:
                 val = attr.get(key)
                 if isinstance(val, list) and val:
                     return str(val[0])
                 if isinstance(val, str):
                     return val
-            # fallback
             return (ci.get("summaries") or [{}])[0].get("itemName") or ""
         except Exception:
             return ""
@@ -850,7 +1030,6 @@ with tab2:
                 st.error(f"Erro Inventories: {e}")
                 break
 
-            # aceita 'inventorySummaries' ou 'InventorySummaries' conforme a versão
             summaries = payload.get("inventorySummaries") or payload.get("InventorySummaries") or []
 
             for s in summaries:
@@ -881,7 +1060,6 @@ with tab2:
         df_out = pd.DataFrame(rows)
         return total_updates, created, df_out
 
-
     # ---- NOVO: Sincronizar settlements (Finances -> valor transferido p/ você)
     def sync_finances_settlements(days=60):
         fin = Finances(marketplace=Marketplaces.US, credentials=SPAPI_CREDS)
@@ -903,9 +1081,8 @@ with tab2:
             settled_at = (g.get("FundTransferDate") or g.get("FinancialEventGroupStart") or "")[:10] or date.today().strftime("%Y-%m-%d")
             desc = f"Settlement {posted} ({currency})"
 
-            # grava só valores > 0
             add_row("amazon_settlements", dict(
-                data=settled_at, amount_usd=transfer if currency == "USD" else transfer, # simplificando para USD
+                data=settled_at, amount_usd=transfer if currency == "USD" else transfer,
                 group_id=gid, desc=desc
             ))
             inserted += 1
@@ -950,7 +1127,7 @@ with tab2:
                 st.dataframe(df_set, use_container_width=True, hide_index=True)
         st.rerun()
 
-    # ---- o resto da sua aba (igual ao original) ----
+    # ---- o resto da sua aba
     date_expr = produtos_date_sql_expr()
 
     dfp_all = df_sql(f"""
@@ -1006,9 +1183,10 @@ with tab2:
 
     tot_qty = int(dr["quantidade"].sum()) if not dr.empty else 0
     tot_val = float(dr["valor_usd"].sum()) if not dr.empty else 0.0
+    titulo_vendido = "Vendido no período" + (f" — {month_label(g_mes)}" if g_mes else "")
     st.markdown(
         f"""<div class="metric-card center">
-                <div class="title">Vendido no período</div>
+                <div class="title">{escape(titulo_vendido)}</div>
                 <div class="value">
                     Quantidade: {tot_qty} • Valor: {escape(money_usd(tot_val))}
                 </div>
@@ -1078,13 +1256,13 @@ with tab3:
 
         c1,c2 = st.columns(2)
         with c1:
-            st.markdown("#### BRL — por mês" + (f" (filtro: {g_mes})" if g_mes else ""))
+            st.markdown("#### BRL — por mês" + (f" (filtro: {month_label(g_mes)})" if g_mes else ""))
             dfv = p_brl.copy()
             for col in ["Receitas (Amazon)","Despesas (Gastos)","Despesas (Invest.)","Resultado"]:
                 dfv[col]=dfv[col].map(money_brl)
             st.dataframe(dfv.rename(columns={"mes":"Mês"}), use_container_width=True, hide_index=True)
         with c2:
-            st.markdown("#### USD — por mês" + (f" (filtro: {g_mes})" if g_mes else ""))
+            st.markdown("#### USD — por mês" + (f" (filtro: {month_label(g_mes)})" if g_mes else ""))
             dfv = p_usd.copy()
             for col in ["Receitas (Amazon)","Despesas (Gastos)","Despesas (Invest.)","Resultado"]:
                 dfv[col]=dfv[col].map(money_usd)
@@ -1152,7 +1330,7 @@ with tab4:
     if agg.empty:
         st.info("Cadastre dados para visualizar os gráficos.")
     else:
-        st.markdown("#### USD" + (f" (filtro: {g_mes})" if g_mes else ""))
+        st.markdown("#### USD" + (f" (filtro: {month_label(g_mes)})" if g_mes else ""))
         usd = agg[["mes","tipo","USD"]].rename(columns={"USD":"valor"})
         barsu = alt.Chart(usd).mark_bar().encode(
             x=alt.X("mes:N", sort=alt.SortField("mes", order="ascending"), title="Mês"),
@@ -1348,7 +1526,7 @@ with tab6:
 
         st.markdown(
             f"""<div class="metric-card center" style="max-width: 1200px;">
-                    <div class="title">Lucro realizado no período selecionado</div>
+                    <div class="title">Lucro realizado no período selecionado{(" — " + month_label(g_mes)) if g_mes else ""}</div>
                     <div class="value">{escape(money_usd(total_lucro))}</div>
                     <div style="margin-top:10px; font-weight:700;">Como calculamos?</div>
                     <div>Lucro = Σ (Gross Profit por unidade × quantidade vendida).</div>
