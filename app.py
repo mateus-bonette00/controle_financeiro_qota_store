@@ -87,12 +87,12 @@ MESES_PT = {
 }
 
 def month_label(yyyy_mm: str) -> str:
-    """Converte 'YYYY-MM' -> 'MM de <mês> (YYYY)'"""
+    """Converte 'YYYY-MM' -> '<mês> (YYYY)'."""
     try:
         y, m = yyyy_mm.split("-")
         mi = int(m)
         nome = MESES_PT.get(mi, m)
-        return f"{m} de {nome} ({y})"
+        return f"{nome} ({y})"
     except Exception:
         return yyyy_mm
 
@@ -141,6 +141,26 @@ def inject_global_css():
     st.markdown(
         f"""
         <style>
+        /* =====================
+           FONTE GLOBAL: POPPINS 800
+           ===================== */
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@800&display=swap');
+
+        html, body, .stApp, [class^="block-container"] {{
+          font-family: "Poppins", sans-serif !important;
+          font-weight: 800 !important;
+          font-style: normal !important;
+        }}
+
+        /* Títulos também com Poppins 800 (gradientes abaixo) */
+        .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6 {{
+          font-family: "Poppins", sans-serif !important;
+          font-weight: 800 !important;
+          font-style: normal !important;
+          letter-spacing: .2px;
+        }}
+
+        /* ===== Fundo / estrutura ===== */
         .stApp {{
             background:
                 radial-gradient(1200px 800px at 10% -10%, rgba(46, 82, 158, 0.25), transparent 60%),
@@ -148,10 +168,12 @@ def inject_global_css():
                 linear-gradient(180deg, #0a122b 0%, #0d1735 40%, #0a122b 100%);
         }}
         .stMainBlockContainer {{ padding-top: 12px; }}
-        /* (mantive sua regra original) */
-        h1, h2, h3, h4, h5, h6, .stMarkdown p, label, span {{ color: {WHITE} !important; }}
-        .stMarkdown a {{ color: {ACCENT} !important; }}
 
+        /* Cor padrão dos textos (mantido) */
+        h1, h2, h3, h4, h5, h6, .stMarkdown p, label, span {{ color: {WHITE} !important; }}
+        .stMarkdown a {{ color: white !important; }}
+
+        /* ===== Inputs ===== */
         .stTextInput > div > div input,
         .stNumberInput input,
         .stTextArea textarea,
@@ -172,13 +194,11 @@ def inject_global_css():
             color: {WHITE} !important;
         }}
 
+        /* ===== Botão custom ===== */
         .st-emotion-cache-1anq8dj {{
             display: inline-flex;
-            -webkit-box-align: center;
             align-items: center;
-            -webkit-box-pack: center;
             justify-content: center;
-
             background: linear-gradient(135deg, #FE0000, #b30000);
             color: #FFFFFF;
             border: none;
@@ -198,7 +218,7 @@ def inject_global_css():
             box-shadow: 0 14px 34px rgba(254,0,0,.45);
         }}
 
-        /* ===== Botões (mantidos) ===== */
+        /* ===== Botões padrão ===== */
         .stButton > button {{
             background: linear-gradient(135deg, {ACCENT}, #b30000);
             color: {WHITE}; border: none;
@@ -224,6 +244,7 @@ def inject_global_css():
             box-shadow: 0 0 0 3px rgba(254,0,0,.28), 0 12px 28px rgba(254,0,0,.40);
         }}
 
+        /* ===== Tabela ===== */
         table.fin {{
             width:100%; border-collapse:separate; border-spacing:0; font-size:14px; color:{WHITE};
             background: rgba(255,255,255,0.03);
@@ -250,6 +271,7 @@ def inject_global_css():
         }}
         a.trash:hover {{ background: linear-gradient(135deg, {ACCENT}, #b30000); border-color: rgba(255,255,255,.3); color:#fff; }}
 
+        /* ===== Abas ===== */
         .stTabs [role="tablist"] {{ justify-content: center; gap: 18px; border-bottom: 0; margin-top: 6px; }}
         .stTabs [role="tab"] {{
             position: relative; padding: 16px 22px 16px 48px !important;
@@ -272,25 +294,14 @@ def inject_global_css():
             width: 20px; height: 20px; opacity:.95; background-repeat:no-repeat; background-size:20px 20px;
             filter: drop-shadow(0 2px 4px rgba(0,0,0,.35));
         }}
-        .stTabs [role="tab"]:nth-child(1)::before {{
-            background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'><path fill='%23FFFFFF' d='M12 3l9 8h-3v9h-5v-6H11v6H6v-9H3l9-8z'/></svg>");
-        }}
-        .stTabs [role="tab"]:nth-child(2)::before {{
-            background-image: url(\"data:image/svg+xml;utf8,<svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'><path fill='%23FFFFFF' d='M21 8l-9-5-9 5v8l9 5 9-5V8zm-9 11l-7-3.89V9.47L12 13l7-3.53v5.64L12 19z'/></svg>\");
-        }}
-        .stTabs [role="tab"]:nth-child(3)::before {{
-            background-image: url(\"data:image/svg+xml;utf8,<svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'><path fill='%23FFFFFF' d='M21 7H3V5h14a2 2 0 012 2zm0 2v8a2 2 0 01-2 2H3a2 2 0 01-2-2V9h20zm-4 3a2 2 0 100 4h3v-4h-3z'/></svg>\");
-        }}
-        .stTabs [role="tab"]:nth-child(4)::before {{
-            background-image: url(\"data:image/svg+xml;utf8,<svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'><path fill='%23FFFFFF' d='M3 3h2v18H3V3zm4 10h2v8H7v-8zm4-6h2v14h-2V7zm4 4h2v10h-2V11zm4-6h2v16h-2V5z'/></svg>\");
-        }}
-        .stTabs [role="tab"]:nth-child(5)::before {{
-            background-image: url(\"data:image/svg+xml;utf8,<svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'><path fill='%23FFFFFF' d='M12 3L2 9v2h20V9L12 3zM4 13h16v6H4v-6zm-2 8h20v2H2v-2z'/></svg>\");
-        }}
-        .stTabs [role="tab"]:nth-child(6)::before {{
-            background-image: url(\"data:image/svg+xml;utf8,<svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'><path fill='%23FFFFFF' d='M9 2h6a2 2 0 012 2h1a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h1a2 2 0 012-2zm0 2v2h6V4H9z'/></svg>\");
-        }}
+        .stTabs [role="tab"]:nth-child(1)::before {{ background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'><path fill='%23FFFFFF' d='M12 3l9 8h-3v9h-5v-6H11v6H6v-9H3l9-8z'/></svg>"); }}
+        .stTabs [role="tab"]:nth-child(2)::before {{ background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'><path fill='%23FFFFFF' d='M21 8l-9-5-9 5v8l9 5 9-5V8zm-9 11l-7-3.89V9.47L12 13l7-3.53v5.64L12 19z'/></svg>"); }}
+        .stTabs [role="tab"]:nth-child(3)::before {{ background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'><path fill='%23FFFFFF' d='M21 7H3V5h14a2 2 0 012 2zm0 2v8a2 2 0 01-2 2H3a2 2 0 01-2-2V9h20zm-4 3a2 2 0 100 4h3v-4h-3z'/></svg>"); }}
+        .stTabs [role="tab"]:nth-child(4)::before {{ background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'><path fill='%23FFFFFF' d='M3 3h2v18H3V3zm4 10h2v8H7v-8zm4-6h2v14h-2V7zm4 4h2v10h-2V11zm4-6h2v16h-2V5z'/></svg>"); }}
+        .stTabs [role="tab"]:nth-child(5)::before {{ background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'><path fill='%23FFFFFF' d='M12 3L2 9v2h20V9L12 3zM4 13h16v6H4v-6zm-2 8h20v2H2v-2z'/></svg>"); }}
+        .stTabs [role="tab"]:nth-child(6)::before {{ background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'><path fill='%23FFFFFF' d='M9 2h6a2 2 0 012 2h1a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h1a2 2 0 012-2zm0 2v2h6V4H9z'/></svg>"); }}
 
+        /* ===== Cards ===== */
         .metric-duo {{
             display: grid; grid-template-columns: repeat(2, minmax(260px, 1fr)); gap: 16px;
             margin: 8px 0 4px;
@@ -304,7 +315,7 @@ def inject_global_css():
             box-shadow: 0 18px 46px rgba(0,0,0,.55), 0 2px 0 {PRIMARY} inset;
         }}
         .metric-card .title {{ font-size: 12px; letter-spacing:.45px; text-transform: uppercase; opacity: .85; font-weight: 800; }}
-        .metric-card .value {{ font-size: 28px; font-weight: 900; margin-top: 6px; }}
+        .metric-card .value {{ font-size: 28px; font-weight: 800; margin-top: 6px; }}
         .metric-card.brl::after, .metric-card.usd::after {{
             content: ""; display:block; height:4px; width: 64px; margin-top: 10px;
             border-radius: 999px; background: {ACCENT};
@@ -313,7 +324,6 @@ def inject_global_css():
         .metric-card.center {{ max-width: 1080px; margin: 12px auto; padding: 22px 26px; }}
         .metric-card.center .title {{ font-size: 14px; letter-spacing:.6px; }}
         .metric-card.center .value {{ font-size: 36px; line-height: 1.15; }}
-        .metric-card.center p, .metric-card.center div:not(.title):not(.value) {{ font-size: 16px; }}
 
         .total-badge {{
             max-width: 840px;
@@ -324,28 +334,23 @@ def inject_global_css():
             box-shadow: 0 22px 60px rgba(0,0,0,.60), 0 0 0 1px rgba(255,255,255,.04) inset;
         }}
 
-        /* =======================================================
-           TÍTULOS — H1 suave; H2–H6 com cortes do Figma
-           ======================================================= */
-        @import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,900;1,900&display=swap');
+        /* ===============================
+           TÍTULOS COM GRADIENTE (Poppins)
+           =============================== */
 
-        /* H1 (como você aprovou) */
+        /* H1 (o grandão) */
         div[data-testid="stMarkdownContainer"] h1, h1 {{
-          font-family: 'Poppins', sans-serif !important;
-          font-weight: 900 !important;
           background: linear-gradient(90deg, #2F529E 0%, #2F529E 39%, #FE0000 100%) !important;
-          text-shadow: 0 10px 24px rgba(254, 0, 0, .35);
           -webkit-background-clip: text !important;
           background-clip: text !important;
           -webkit-text-fill-color: transparent !important;
           color: transparent !important;
-          filter: saturate(1.25) contrast(3.15);
+          text-shadow: 0 10px 24px rgba(254, 0, 0, .35);
+          filter: saturate(1.2) contrast(2.6);
         }}
 
-        /* H2–H6 (stops do Figma: 34.77% / 77.81%) */
-        :root {{
-          --mini-title-grad: linear-gradient(90deg, #2F529E 30%, #FE0000 77.81%);
-        }}
+        /* H2–H6 com cortes do Figma (34.77% / 77.81%) */
+        :root {{ --mini-title-grad: linear-gradient(90deg, #2F529E 34.77%, #FE0000 77.81%); }}
 
         /* Zera cor sólida herdada (heading + filhos) */
         div[data-testid="stMarkdownContainer"] h2,
@@ -376,13 +381,11 @@ def inject_global_css():
           background: var(--mini-title-grad) !important;
           -webkit-background-clip: text !important;
           background-clip: text !important;
-          font-family: 'Poppins', sans-serif !important;
-          font-weight: 900 !important;
-          filter: saturate(1.25) contrast(3.15);
-          text-shadow: 0 10px 24px rgba(254, 0, 0, .35);
+          text-shadow: 0 10px 24px rgba(254,0,0,.35);
+          filter: saturate(1.2) contrast(2.6);
         }}
 
-        /* tamanhos (mantidos) */
+        /* Tamanhos dos headings */
         h1 {{ font-size: 44px !important; line-height: 100% !important; }}
         h2 {{ font-size: 36px !important; }}
         h3 {{ font-size: 28px !important; }}
@@ -390,46 +393,7 @@ def inject_global_css():
         h5 {{ font-size: 18px !important; }}
         h6 {{ font-size: 16px !important; }}
 
-        /* =======================================================
-           GARANTIR PESO 900 REAL (inclusive em spans/b/strong)
-           ======================================================= */
-        div[data-testid="stMarkdownContainer"] h1,
-        div[data-testid="stMarkdownContainer"] h2,
-        div[data-testid="stMarkdownContainer"] h3,
-        div[data-testid="stMarkdownContainer"] h4,
-        div[data-testid="stMarkdownContainer"] h5,
-        div[data-testid="stMarkdownContainer"] h6,
-        div[data-testid="stMarkdownContainer"] h1 *,
-        div[data-testid="stMarkdownContainer"] h2 *,
-        div[data-testid="stMarkdownContainer"] h3 *,
-        div[data-testid="stMarkdownContainer"] h4 *,
-        div[data-testid="stMarkdownContainer"] h5 *,
-        div[data-testid="stMarkdownContainer"] h6 * {{
-          font-family: 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, sans-serif !important;
-          font-weight: 900 !important;
-          font-variation-settings: "wght" 900;
-          font-synthesis: none;
-          -webkit-font-smoothing: antialiased;
-          -moz-osx-font-smoothing: grayscale;
-        }}
-
-        /* evita que <b>/<strong> dentro do título derrubem p/ 700 */
-        div[data-testid="stMarkdownContainer"] h1 b,
-        div[data-testid="stMarkdownContainer"] h1 strong,
-        div[data-testid="stMarkdownContainer"] h2 b,
-        div[data-testid="stMarkdownContainer"] h2 strong,
-        div[data-testid="stMarkdownContainer"] h3 b,
-        div[data-testid="stMarkdownContainer"] h3 strong,
-        div[data-testid="stMarkdownContainer"] h4 b,
-        div[data-testid="stMarkdownContainer"] h4 strong,
-        div[data-testid="stMarkdownContainer"] h5 b,
-        div[data-testid="stMarkdownContainer"] h5 strong,
-        div[data-testid="stMarkdownContainer"] h6 b,
-        div[data-testid="stMarkdownContainer"] h6 strong {{
-          font-weight: inherit !important;
-        }}
-
-        /* opcional: micro-stroke p/ dar “corpo” nos menores */
+        /* Micro-contorno para dar corpo aos menores */
         div[data-testid="stMarkdownContainer"] h2,
         div[data-testid="stMarkdownContainer"] h3,
         div[data-testid="stMarkdownContainer"] h4,
@@ -448,8 +412,9 @@ def inject_global_css():
 
 
 
+
 def metric_duo_cards(section_title: str, brl: float, usd: float, month: str | None = None):
-    # se vier mês (YYYY-MM), mostra "— <mês nomeado (YYYY)>"
+    # se vier mês (YYYY-MM), mostra "— <mês (YYYY)>"
     suffix = f" — {month_label(month)}" if month else ""
     st.markdown(
         f"""
@@ -747,19 +712,51 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Filtro de mês global (com rótulo amigável)
-global_meses = get_all_months()
-g_default = st.session_state.get("g_mes", "")
-g_options = [""] + global_meses
-g_idx = g_options.index(g_default) if g_default in g_options else 0
-g_mes = st.selectbox(
-    "Filtro de mês (global) — YYYY-MM",
-    options=g_options,
-    index=g_idx,
-    format_func=lambda v: ("" if v == "" else month_label(v)),
-    help="Em branco = todos os meses. Afeta Principal, Receitas (FBA), Fluxo de Caixa, Gráficos e Produtos.",
-    key="g_mes",
-)
+# ===== Novo filtro global: MÊS + ANO =====
+global_meses = get_all_months()                 # ex.: ["2025-09", "2025-08", ...]
+anos_disponiveis = sorted({m[:4] for m in global_meses}) or [str(date.today().year)]
+
+# defaults
+ano_padrao = st.session_state.get("g_ano") or (anos_disponiveis[-1] if anos_disponiveis else str(date.today().year))
+mes_padrao = st.session_state.get("g_mes_num") or date.today().month
+
+# UI lado a lado
+c_mes, c_ano = st.columns([3, 1])
+
+with c_ano:
+    g_ano = st.selectbox(
+        "Ano",
+        options=anos_disponiveis,
+        index=anos_disponiveis.index(ano_padrao) if ano_padrao in anos_disponiveis else len(anos_disponiveis) - 1,
+        key="g_ano"
+    )
+
+# meses existentes para o ano escolhido (se não houver, mostra todos 1..12)
+meses_do_ano = sorted({int(m[5:7]) for m in global_meses if m.startswith(f"{g_ano}-")})
+if not meses_do_ano:
+    meses_do_ano = list(range(1, 13))
+
+labels_meses = [MESES_PT[i].capitalize() for i in meses_do_ano]
+idx_mes = 0
+if st.session_state.get("g_mes_num") in meses_do_ano:
+    idx_mes = meses_do_ano.index(st.session_state["g_mes_num"])
+
+with c_mes:
+    mes_label = st.selectbox(
+        "Mês",
+        options=labels_meses,
+        index=idx_mes,
+        key="g_mes_label"
+    )
+
+# resolve mês numérico a partir do label escolhido
+mes_num = meses_do_ano[labels_meses.index(mes_label)]
+st.session_state["g_mes_num"] = mes_num
+
+# Mantém compatibilidade com o resto do app
+g_mes = f"{g_ano}-{mes_num:02d}"
+st.session_state["g_mes"] = g_mes
+
 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
