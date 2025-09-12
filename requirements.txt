@@ -1,3 +1,5 @@
-streamlit>=1.32
-pandas
-altair
+python-amazon-sp-api>=0.19,<1.0
+pydantic<2
+pandas>=2.0.0
+python-dateutil
+streamlit

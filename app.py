@@ -1,5 +1,5 @@
 # app.py
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from html import escape
 from pathlib import Path
@@ -10,6 +10,10 @@ import pandas as pd
 import streamlit as st
 import altair as alt
 import re
+
+# ===== SP-API (Amazon) =====
+from sp_api.api import Sellers, Orders, Inventories, CatalogItems, Finances
+from sp_api.base import Marketplaces, SellingApiException
 
 # ----------------------------------
 # Config
@@ -29,6 +33,10 @@ def get_conn():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
+
+def iso8601_z(dt: datetime) -> str:
+    # formato exigido: YYYY-MM-DDTHH:MM:SSZ (UTC)
+    return dt.astimezone(timezone.utc).replace(microsecond=0).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 def ensure_table(sql_create: str):
     conn = get_conn()
@@ -86,6 +94,7 @@ def handle_query_deletions():
         "del_pc": "produtos_compra",
         "del_ar": "amazon_receitas",
         "del_prod": "produtos",
+        "del_settle": "amazon_settlements",
     }
     for param, table in mapping.items():
         if param in q:
@@ -180,7 +189,7 @@ def inject_global_css():
             box-shadow: 0 10px 22px rgba(0,0,0,.35);
             font-weight: 800;
         }}
-        a.trash:hover {{ background: linear-gradient(135deg, {ACCENT}, #b30000); border-color: rgba(255,255,255,.3); }}
+        a.trash:hover {{ background: linear-gradient(135deg, {ACCENT}, #b30000); border-color: rgba(255,255,255,.3); color:#fff; }}
 
         .stTabs [role="tablist"] {{ justify-content: center; gap: 18px; border-bottom: 0; margin-top: 6px; }}
         .stTabs [role="tab"] {{
@@ -235,27 +244,17 @@ def inject_global_css():
             padding: 18px 20px;
             box-shadow: 0 18px 46px rgba(0,0,0,.55), 0 2px 0 {PRIMARY} inset;
         }}
-        .metric-card .title {{
-            font-size: 12px; letter-spacing:.45px; text-transform: uppercase; opacity: .85; font-weight: 800;
-        }}
-        .metric-card .value {{
-            font-size: 28px; font-weight: 900; margin-top: 6px;
-        }}
+        .metric-card .title {{ font-size: 12px; letter-spacing:.45px; text-transform: uppercase; opacity: .85; font-weight: 800; }}
+        .metric-card .value {{ font-size: 28px; font-weight: 900; margin-top: 6px; }}
         .metric-card.brl::after, .metric-card.usd::after {{
             content: ""; display:block; height:4px; width: 64px; margin-top: 10px;
             border-radius: 999px; background: {ACCENT};
             box-shadow: 0 6px 18px rgba(254,0,0,.55);
         }}
-
-        .metric-card.center {{
-            max-width: 1080px;
-            margin: 12px auto;
-            padding: 22px 26px;
-        }}
+        .metric-card.center {{ max-width: 1080px; margin: 12px auto; padding: 22px 26px; }}
         .metric-card.center .title {{ font-size: 14px; letter-spacing:.6px; }}
         .metric-card.center .value {{ font-size: 36px; line-height: 1.15; }}
-        .metric-card.center p,
-        .metric-card.center div:not(.title):not(.value) {{ font-size: 16px; }}
+        .metric-card.center p, .metric-card.center div:not(.title):not(.value) {{ font-size: 16px; }}
 
         .total-badge {{
             max-width: 840px;
@@ -343,7 +342,7 @@ def produtos_date_insert_map(d: date) -> dict:
 # ----------------------------------
 def get_all_months() -> list[str]:
     meses = set()
-    for tbl in ["gastos", "investimentos", "receitas", "produtos_compra", "amazon_receitas", "amazon_saldos"]:
+    for tbl in ["gastos", "investimentos", "receitas", "produtos_compra", "amazon_receitas", "amazon_saldos", "amazon_settlements"]:
         try:
             df = df_sql(f"SELECT DISTINCT strftime('%Y-%m', date(data)) AS m FROM {tbl};")
             meses |= set(df["m"].dropna().tolist())
@@ -436,6 +435,7 @@ def init_db():
         ("tax","REAL NOT NULL DEFAULT 0"), ("quantidade","INTEGER NOT NULL DEFAULT 0"),
         ("prep","REAL NOT NULL DEFAULT 2"), ("sold_for","REAL NOT NULL DEFAULT 0"),
         ("amazon_fees","REAL NOT NULL DEFAULT 0"), ("link_amazon","TEXT"), ("link_fornecedor","TEXT"),
+        ("data_amz","TEXT")
     ]:
         add_column_if_missing("produtos", col, decl)
 
@@ -483,6 +483,17 @@ def init_db():
         );
     """)
 
+    # Novo: settlements (pagamentos transferidos pela Amazon)
+    ensure_table("""
+        CREATE TABLE IF NOT EXISTS amazon_settlements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            data TEXT NOT NULL,
+            amount_usd REAL NOT NULL DEFAULT 0,
+            group_id TEXT,
+            desc TEXT
+        );
+    """)
+
 # ----------------------------------
 # Métricas de produto
 # ----------------------------------
@@ -516,29 +527,24 @@ def _norm(x: str) -> str:
         return ""
     x = str(x)
     x = x.strip().lower()
-    x = re.sub(r"[\s\-._]+", "", x)  # remove espaços, hífens, pontos, _
+    x = re.sub(r"[\s\-._]+", "", x)
     return x
 
 def _match_prod_for_receipt(row, by_id, by_sku, by_upc, by_asin, by_name):
-    # 1) por id
     pid = row.get("produto_id")
     if pd.notna(pid):
         prod = by_id.get(int(pid))
-        if prod: 
+        if prod:
             return prod
-    # 2) por SKU
     sku = _norm(row.get("sku"))
     if sku and sku in by_sku:
         return by_sku[sku]
-    # 3) por UPC
     upc = _norm(row.get("upc") if "upc" in row else None)
     if upc and upc in by_upc:
         return by_upc[upc]
-    # 4) por ASIN
     asin = _norm(row.get("asin") if "asin" in row else None)
     if asin and asin in by_asin:
         return by_asin[asin]
-    # 5) por nome (último recurso)
     name = _norm(row.get("produto") if "produto" in row else None)
     if name and name in by_name:
         return by_name[name]
@@ -690,6 +696,261 @@ with tab1:
 with tab2:
     st.subheader("Produtos Vendidos (Receitas FBA)")
 
+    def _secret(k: str, default: str = "") -> str:
+    # Lê do st.secrets (local) ou do ambiente (Render)
+        try:
+            return st.secrets[k]
+        except Exception:
+            return os.environ.get(k, default)
+
+    SPAPI_CREDS = dict(
+        refresh_token     = _secret("SPAPI_REFRESH_TOKEN"),
+        lwa_app_id        = _secret("LWA_CLIENT_ID"),
+        lwa_client_secret = _secret("LWA_CLIENT_SECRET"),
+        aws_access_key    = _secret("AWS_ACCESS_KEY_ID"),
+        aws_secret_key    = _secret("AWS_SECRET_ACCESS_KEY"),
+    )
+
+
+    # ---- Teste básico SP-API (expander)
+    with st.expander("Testar conexão com a Amazon (clique para abrir)"):
+        c1, c2 = st.columns(2)
+        if c1.button("Testar Sellers.get_marketplace_participations"):
+            try:
+                sellers = Sellers(marketplace=Marketplaces.US, credentials=SPAPI_CREDS)
+                resp = sellers.get_marketplace_participations()
+                st.json(resp.payload)
+                st.success("Sellers OK ✅")
+            except SellingApiException as e:
+                st.error(f"Erro Sellers: {e}")
+
+        if c2.button("Listar Orders (últimos 3 dias)"):
+            try:
+                after = iso8601_z(datetime.now(timezone.utc) - timedelta(days=3))
+                orders_api = Orders(marketplace=Marketplaces.US, credentials=SPAPI_CREDS)
+                r = orders_api.get_orders(CreatedAfter=after, OrderStatuses=["Unshipped","Shipped","Pending"])
+                st.json(r.payload)
+                st.success("Orders OK ✅ (JSON acima)")
+            except SellingApiException as e:
+                st.error(f"Erro Orders: {e}")
+
+    # ---- Função de sincronização (7 dias) gravando em amazon_receitas
+    def sync_orders_to_db(days=7):
+        orders_api = Orders(marketplace=Marketplaces.US, credentials=SPAPI_CREDS)
+        after = iso8601_z(datetime.now(timezone.utc) - timedelta(days=days))
+        res = orders_api.get_orders(CreatedAfter=after, OrderStatuses=["Unshipped","Shipped","Pending","Canceled","ShippedPartial","Unfulfillable","Unconfirmed"])
+        orders = res.payload.get("Orders", [])
+        if not orders:
+            return 0, pd.DataFrame(), pd.DataFrame()
+
+        dfp = df_sql("SELECT id, sku FROM produtos;")
+        sku_to_pid = { str(s or "").strip(): int(i) for i, s in zip(dfp["id"], dfp["sku"]) }
+
+        inseridos = 0
+        all_items = []
+
+        for o in orders:
+            oid = o.get("AmazonOrderId")
+            try:
+                items = orders_api.get_order_items(oid).payload.get("OrderItems", [])
+            except SellingApiException as e:
+                st.warning(f"Falha ao pegar itens do pedido {oid}: {e}")
+                continue
+
+            if not items:
+                continue
+
+            dfi = pd.DataFrame([{
+                "AmazonOrderId": oid,
+                "SellerSKU": it.get("SellerSKU"),
+                "Title": it.get("Title"),
+                "Qty": int(it.get("QuantityOrdered") or 0),
+                "ItemPrice": float((it.get("ItemPrice") or {}).get("Amount") or 0.0),
+                "Currency": (it.get("ItemPrice") or {}).get("CurrencyCode"),
+            } for it in items])
+
+            all_items.append(dfi)
+
+            grp = dfi.groupby(["SellerSKU","Currency"], dropna=False).agg(
+                Qtd=("Qty","sum"),
+                ValorUnit=("ItemPrice","mean")
+            ).reset_index()
+
+            for _, row in grp.iterrows():
+                sku = str(row["SellerSKU"] or "").strip()
+                pid = sku_to_pid.get(sku)
+                qtd = int(row["Qtd"] or 0)
+                valor_total = float(row["ValorUnit"] or 0.0) * qtd
+
+                add_row("amazon_receitas", dict(
+                    data=date.today().strftime("%Y-%m-%d"),
+                    produto_id=pid,
+                    quantidade=qtd,
+                    valor_usd=valor_total,
+                    quem="SP-API",
+                    obs=f"Sync {oid}",
+                    sku=sku
+                ))
+                if pid and qtd:
+                    get_conn().execute(
+                        "UPDATE produtos SET estoque = MAX(0, estoque - ?) WHERE id = ?;",
+                        (qtd, pid)
+                    ).connection.commit()
+
+                inseridos += 1
+
+        df_orders = pd.DataFrame([{
+            "AmazonOrderId": o.get("AmazonOrderId"),
+            "PurchaseDate": o.get("PurchaseDate"),
+            "OrderStatus": o.get("OrderStatus"),
+            "FulfillmentChannel": o.get("FulfillmentChannel"),
+            "MarketplaceId": o.get("MarketplaceId"),
+            "OrderTotal": (o.get("OrderTotal") or {}).get("Amount"),
+            "Currency": (o.get("OrderTotal") or {}).get("CurrencyCode"),
+        } for o in orders])
+
+        df_items = pd.concat(all_items, ignore_index=True) if all_items else pd.DataFrame()
+        return inseridos, df_orders, df_items
+
+    # ---- NOVO: Sincronizar inventário FBA (preenche/atualiza produtos e estoque)
+    def enrich_name_by_asin(asin: str) -> str:
+        if not asin:
+            return ""
+        try:
+            cat = CatalogItems(marketplace=Marketplaces.US, credentials=SPAPI_CREDS)
+            ci = cat.get_catalog_item(marketplaceIds=[Marketplaces.US.marketplace_id], asin=asin).payload
+            attr = ci.get("attributes") or {}
+            # tenta vários campos comuns de título/nome
+            for key in ["item_name","productTitle","title"]:
+                val = attr.get(key)
+                if isinstance(val, list) and val:
+                    return str(val[0])
+                if isinstance(val, str):
+                    return val
+            # fallback
+            return (ci.get("summaries") or [{}])[0].get("itemName") or ""
+        except Exception:
+            return ""
+
+    def sync_fba_inventory():
+        inv = Inventories(marketplace=Marketplaces.US, credentials=SPAPI_CREDS)
+        token = None
+        total_updates = 0
+        created = 0
+        rows = []
+        while True:
+            try:
+                resp = inv.get_inventory_summary_marketplace(
+                    details=True,
+                    marketplaceIds=[Marketplaces.US.marketplace_id],
+                    nextToken=token
+                )
+                payload = resp.payload or {}
+            except SellingApiException as e:
+                st.error(f"Erro Inventories: {e}")
+                break
+
+            # aceita 'inventorySummaries' ou 'InventorySummaries' conforme a versão
+            summaries = payload.get("inventorySummaries") or payload.get("InventorySummaries") or []
+
+            for s in summaries:
+                sku = (s.get("sellerSku") or s.get("SellerSku") or "").strip()
+                asin = (s.get("asin") or s.get("ASIN") or "").strip()
+                qty = int(s.get("totalSupplyQuantity") or s.get("TotalSupplyQuantity") or 0)
+                rows.append({"sku": sku, "asin": asin, "estoque": qty})
+
+                dfp = df_sql("SELECT id FROM produtos WHERE sku = ?;", (sku,))
+                if not dfp.empty:
+                    pid = int(dfp.iloc[0]["id"])
+                    get_conn().execute("UPDATE produtos SET estoque = ? WHERE id = ?;", (qty, pid)).connection.commit()
+                    total_updates += 1
+                else:
+                    nome = enrich_name_by_asin(asin) or f"Produto {sku or asin}"
+                    today = date.today().strftime("%Y-%m-%d")
+                    add_row("produtos", dict(
+                        data_add=today, data_amz=today, nome=nome, sku=sku, upc="", asin=asin,
+                        estoque=qty, custo_base=0.0, freight=0.0, tax=0.0, quantidade=0, prep=2.0,
+                        sold_for=0.0, amazon_fees=0.0, link_amazon="", link_fornecedor=""
+                    ))
+                    created += 1
+
+            token = payload.get("nextToken") or payload.get("NextToken")
+            if not token:
+                break
+
+        df_out = pd.DataFrame(rows)
+        return total_updates, created, df_out
+
+
+    # ---- NOVO: Sincronizar settlements (Finances -> valor transferido p/ você)
+    def sync_finances_settlements(days=60):
+        fin = Finances(marketplace=Marketplaces.US, credentials=SPAPI_CREDS)
+        after = iso8601_z(datetime.now(timezone.utc) - timedelta(days=days))
+        try:
+            groups = fin.list_financial_event_groups(FinancialEventGroupStartedAfter=after).payload
+        except SellingApiException as e:
+            st.error(f"Erro Finances.groups: {e}")
+            return 0, pd.DataFrame()
+
+        groups_list = groups.get("FinancialEventGroupList", []) or []
+        inserted = 0
+        out = []
+        for g in groups_list:
+            gid = g.get("FinancialEventGroupId")
+            posted = g.get("ProcessingStatus")
+            transfer = float((g.get("OriginalTotal") or {}).get("CurrencyAmount") or 0.0)
+            currency = (g.get("OriginalTotal") or {}).get("CurrencyCode") or "USD"
+            settled_at = (g.get("FundTransferDate") or g.get("FinancialEventGroupStart") or "")[:10] or date.today().strftime("%Y-%m-%d")
+            desc = f"Settlement {posted} ({currency})"
+
+            # grava só valores > 0
+            add_row("amazon_settlements", dict(
+                data=settled_at, amount_usd=transfer if currency == "USD" else transfer, # simplificando para USD
+                group_id=gid, desc=desc
+            ))
+            inserted += 1
+            out.append({"group_id": gid, "data": settled_at, "amount": transfer, "currency": currency, "status": posted})
+
+        return inserted, pd.DataFrame(out)
+
+    # ---- Controles de sincronização
+    st.markdown("#### Integração SP-API — Pedidos")
+    if st.button("Sincronizar pedidos (últimos 7 dias)"):
+        with st.spinner("Sincronizando com a Amazon..."):
+            inseridos, df_o, df_i = sync_orders_to_db(days=7)
+        if inseridos == 0:
+            st.info("Nenhum pedido encontrado no período.")
+        else:
+            st.success(f"Inserções em amazon_receitas: {inseridos}")
+        if not df_o.empty:
+            st.write("Pedidos:")
+            st.dataframe(df_o, use_container_width=True, hide_index=True)
+        if not df_i.empty:
+            st.write("Itens dos pedidos:")
+            st.dataframe(df_i, use_container_width=True, hide_index=True)
+        st.rerun()
+
+    st.markdown("#### Integração SP-API — Inventário FBA")
+    c_inv1, c_inv2 = st.columns(2)
+    if c_inv1.button("Sincronizar inventário (FBA) — atualizar estoque e criar SKUs faltantes"):
+        with st.spinner("Lendo inventário FBA..."):
+            upd, created, df_inv = sync_fba_inventory()
+        st.success(f"Estoque atualizado para {upd} SKU(s). Produtos criados: {created}.")
+        if not df_inv.empty:
+            st.dataframe(df_inv, use_container_width=True, hide_index=True)
+
+    if c_inv2.button("Sincronizar settlements (últimos 60 dias) — Finances"):
+        with st.spinner("Buscando settlements..."):
+            ins, df_set = sync_finances_settlements(days=60)
+        if ins == 0:
+            st.info("Nenhum settlement encontrado no período.")
+        else:
+            st.success(f"Settlements inseridos: {ins}")
+            if not df_set.empty:
+                st.dataframe(df_set, use_container_width=True, hide_index=True)
+        st.rerun()
+
+    # ---- o resto da sua aba (igual ao original) ----
     date_expr = produtos_date_sql_expr()
 
     dfp_all = df_sql(f"""
@@ -957,6 +1218,30 @@ with tab5:
     else:
         st.info("Sem snapshots cadastrados.")
 
+    st.markdown("### Settlements (Finances) — transferências da Amazon para você")
+    df_set = df_sql("""SELECT id, data, amount_usd, group_id, desc
+                       FROM amazon_settlements
+                       ORDER BY date(data) DESC, id DESC;""")
+    if not df_set.empty:
+        view_set = pd.DataFrame({
+            "ID": df_set["id"].astype(int),
+            "Data": df_set["data"],
+            "Valor (USD)": df_set["amount_usd"].map(money_usd),
+            "Group": df_set["group_id"].fillna(""),
+            "Descrição": df_set["desc"].fillna(""),
+        })
+        st.markdown(df_to_clean_html(view_set, "del_settle", "tbl_settle"), unsafe_allow_html=True)
+        total_set = float(df_set["amount_usd"].sum())
+        st.markdown(
+            f"""<div class="metric-card center" style="max-width:760px; margin-top:14px;">
+                    <div class="title">Total recebido (settlements)</div>
+                    <div class="value">{escape(money_usd(total_set))}</div>
+                </div>""",
+            unsafe_allow_html=True
+        )
+    else:
+        st.info("Sem settlements sincronizados. Use o botão na aba 'Receitas (FBA)' para puxar os últimos 60 dias.")
+
 # ============================
 # TAB 6 - PRODUTOS (SKU PLANNER)
 # ============================
@@ -988,7 +1273,6 @@ with tab6:
             if not nome.strip():
                 st.warning("Informe o nome do produto.")
             else:
-                # Preenche ambas colunas de data se existirem, evitando NOT NULL em bases antigas.
                 date_map = produtos_date_insert_map(data_add_dt)
                 row = dict(
                     **date_map,
@@ -1001,7 +1285,6 @@ with tab6:
                 st.success("Produto salvo!")
                 st.rerun()
 
-    # -------- Lista de produtos + métricas
     date_expr = produtos_date_sql_expr()
     dfp_all = df_sql(f"""
         SELECT id, {date_expr} AS data_add, nome, sku, upc, asin, estoque,
@@ -1013,7 +1296,6 @@ with tab6:
     dfp = apply_month_filter(dfp_all, g_mes, col="data_add") if g_mes else dfp_all
 
     if not dfp.empty:
-        # ---- métricas unitárias
         dfv = dfp.copy()
         dfv["p2b"] = dfv.apply(price_to_buy_eff, axis=1)
         dfv["gross_profit"] = dfv.apply(gross_profit_unit, axis=1)
@@ -1040,7 +1322,6 @@ with tab6:
         })
         st.markdown(df_to_clean_html(view, "del_prod", "tbl_prod"), unsafe_allow_html=True)
 
-        # ---- lucro realizado no período, combinando vendas amazon_receitas
         dr = df_sql("""SELECT id, data, produto_id, quantidade, valor_usd, sku, produto
                        FROM amazon_receitas
                        ORDER BY date(data) DESC, id DESC;""")
@@ -1048,7 +1329,6 @@ with tab6:
 
         total_lucro = 0.0
         if not dr.empty:
-            # dicionários de produto para casamento robusto
             by_id = dfv.set_index("id").to_dict("index")
             by_sku = { _norm(s): r for s, r in dfv.set_index("sku").to_dict("index").items() if s and str(s).strip() }
             by_upc = { _norm(s): r for s, r in dfv.set_index("upc").to_dict("index").items() if s and str(s).strip() }
@@ -1066,7 +1346,6 @@ with tab6:
                     q = 0
                 total_lucro += gp_u * q
 
-        # ---- card centralizado de lucro realizado
         st.markdown(
             f"""<div class="metric-card center" style="max-width: 1200px;">
                     <div class="title">Lucro realizado no período selecionado</div>

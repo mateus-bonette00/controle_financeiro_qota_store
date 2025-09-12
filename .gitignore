@@ -24,3 +24,6 @@ finance.db
 # caches variados
 .streamlit/cache/
 .cache/
+
+# streamlit
+.streamlit/secrets.toml
