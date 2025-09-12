@@ -333,18 +333,18 @@ def inject_global_css():
         div[data-testid="stMarkdownContainer"] h1, h1 {{
           font-family: 'Poppins', sans-serif !important;
           font-weight: 900 !important;
-          background: linear-gradient(90deg, #2F529E 0%, #2F529E 28%, #FE0000 100%) !important;
+          background: linear-gradient(90deg, #2F529E 0%, #2F529E 39%, #FE0000 100%) !important;
+          text-shadow: 0 10px 24px rgba(254, 0, 0, .35);
           -webkit-background-clip: text !important;
           background-clip: text !important;
           -webkit-text-fill-color: transparent !important;
           color: transparent !important;
           filter: saturate(1.25) contrast(3.15);
-          text-shadow: 5px 5px 15px 0px rgba(128, 128, 128, 0.25);
         }}
 
         /* H2–H6 (stops do Figma: 34.77% / 77.81%) */
         :root {{
-          --mini-title-grad: linear-gradient(90deg, #2F529E 10%,#FE0000 23%,#FE0000 45%, #FE0000 77.81%);
+          --mini-title-grad: linear-gradient(90deg, #2F529E 30%, #FE0000 77.81%);
         }}
 
         /* Zera cor sólida herdada (heading + filhos) */
@@ -379,7 +379,7 @@ def inject_global_css():
           font-family: 'Poppins', sans-serif !important;
           font-weight: 900 !important;
           filter: saturate(1.25) contrast(3.15);
-          text-shadow: 5px 5px 15px 0px rgba(128, 128, 128, 0.25);
+          text-shadow: 0 10px 24px rgba(254, 0, 0, .35);
         }}
 
         /* tamanhos (mantidos) */
