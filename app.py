@@ -279,7 +279,6 @@ def metric_duo_cards(section_title: str, brl: float, usd: float, month: str | No
     )
 
 def footer_total_badge(title: str, brl: float, usd: float, margin_top: int = 28):
-    # (mantido para outros usos – não é mais usado em Investimentos)
     st.markdown(
         f"""
         <div style="width:100%; display:flex; justify-content:flex-start; margin:{margin_top}px 0 8px;">
@@ -360,8 +359,9 @@ def render_total_kpi_cards(usd_receitas: float, brl_receitas: float,
     """
     st.markdown(html, unsafe_allow_html=True)
 
-def render_single_kpi(kind: str, label: str, usd_value: float, brl_value: float):
-    """Card único no mesmo estilo dos KPIs de receita/despesa/resultado."""
+def render_single_kpi(kind: str, label: str, usd_value: float, brl_value: float, center: bool = False):
+    """Card único no mesmo estilo dos KPIs de receita/despesa/resultado.
+       center=True centraliza o card na página."""
     assert kind in {"receita","despesa","result"}
     # define ícone conforme o tipo
     if kind == "receita":
@@ -383,6 +383,8 @@ def render_single_kpi(kind: str, label: str, usd_value: float, brl_value: float)
       </div>
     </div>
     """
+    if center:
+        html = f'<div style="display:flex; justify-content:center;">{html}</div>'
     st.markdown(html, unsafe_allow_html=True)
 
 # ----------------------------------
@@ -730,7 +732,7 @@ with tab1:
         else:
             st.info("Sem investimentos no filtro atual.")
 
-        # === NOVO: KPI de Investimentos (TOTAL – todos os meses), design igual aos cards de despesa
+        # === KPI de Investimentos (TOTAL – todos os meses), estilo "despesa"
         total_inv_brl_all = float(df_i_all["valor_brl"].sum()) if not df_i_all.empty else 0.0
         total_inv_usd_all = float(df_i_all["valor_usd"].sum()) if not df_i_all.empty else 0.0
         render_single_kpi(
@@ -973,16 +975,39 @@ with tab2:
     with st.form("form_amz_receitas"):
         data_ar = st.date_input("Data do crédito", value=st.session_state.get("ar_data", date.today()),
                                 format="DD/MM/YYYY", key="ar_data")
+
+        # ====== Seleção do produto
         if prod_options:
-            labels = [x[0] for x in prod_options]; sel = st.selectbox("Produto vendido (SKU | UPC | Nome)", labels, index=0)
-            pid = [x for x in prod_options if x[0]==sel][0][1]; sel_sku = [x for x in prod_options if x[0]==sel][0][2]
+            labels = [x[0] for x in prod_options]
+            sel_label = st.selectbox("Produto vendido (SKU | UPC | Nome)", labels, index=0, key="ar_sel_label")
+            pid = [x for x in prod_options if x[0]==sel_label][0][1]
+            sel_sku = [x for x in prod_options if x[0]==sel_label][0][2]
+            # Busca o sold_for do produto selecionado
+            prod_row = dfp_all[dfp_all["id"] == pid].head(1)
+            sold_for_default = float(prod_row["sold_for"].iloc[0] if not prod_row.empty else 0.0)
+
+            # Inicializa/atualiza valor default do campo "valor recebido por unidade"
+            if "ar_last_pid" not in st.session_state:
+                st.session_state["ar_last_pid"] = pid
+                st.session_state["ar_val"] = sold_for_default
+            else:
+                if st.session_state["ar_last_pid"] != pid:
+                    st.session_state["ar_last_pid"] = pid
+                    st.session_state["ar_val"] = sold_for_default
         else:
             st.warning("Cadastre produtos na aba **Produtos (SKU Planner)** para selecionar aqui.")
             pid, sel_sku = None, ""
+            if "ar_val" not in st.session_state: st.session_state["ar_val"] = 0.0
 
         qty_ar = st.number_input("Quantidade vendida", min_value=1, step=1, value=1, key="ar_qty")
-        val_ar = st.number_input("Valor recebido (USD) dentro da Amazon (por unidade)", min_value=0.0, step=0.01,
-                                 format="%.2f", key="ar_val")
+
+        # ===== Campo auto-preenchido com sold_for do produto selecionado
+        val_ar = st.number_input(
+            "Valor recebido (USD) dentro da Amazon (por unidade)",
+            min_value=0.0, step=0.01, format="%.2f",
+            key="ar_val", value=st.session_state.get("ar_val", 0.0)
+        )
+
         quem_ar = st.selectbox("Quem lançou", pessoas, key="ar_quem")
         obs_ar = st.text_input("Observação (opcional)", key="ar_obs")
 
@@ -1109,7 +1134,6 @@ with tab3:
         tot_desp_brl    = float(p_brl_all["Despesas (Gastos)"].sum() + p_brl_all["Despesas (Invest.)"].sum())
 
         st.markdown("### Totais Gerais — soma de todos os meses")
-        # === NOVO: usa o mesmo design dos 3 KPIs (igual à segunda imagem)
         render_total_kpi_cards(
             usd_receitas=tot_receita_usd,
             brl_receitas=tot_receita_brl,
@@ -1342,7 +1366,8 @@ with tab6:
             data_add_dt = st.date_input("Data adicionada na Amazon", value=date.today(), format="DD/MM/YYYY")
             nome = st.text_input("Nome do produto *", placeholder="Ex.: Carrinho")
             sku = st.text_input("SKU", placeholder="Ex.: ABC-123")
-            upc = st.text_input("UPC"); asin = st.text_input("ASIN")
+            upc = st.text_input("UPC")
+            asin = st.text_input("ASIN")
             link_amz = st.text_input("Link do produto na Amazon")
             link_for = st.text_input("Link do fornecedor")
         with c2:
@@ -1361,13 +1386,17 @@ with tab6:
             else:
                 date_map = produtos_date_insert_map(data_add_dt)
                 row = dict(
-                    **date_map, nome=nome.strip(), sku=sku.strip(), upc=upc.strip(), asin=asin.strip(),
+                    **date_map,
+                    nome=nome.strip(), sku=sku.strip(), upc=upc.strip(), asin=asin.strip(),
                     estoque=int(estoque), custo_base=custo_base, freight=freight, tax=tax,
                     quantidade=int(quantidade), prep=prep, sold_for=sold_for, amazon_fees=amazon_fees,
                     link_amazon=link_amz.strip(), link_fornecedor=link_for.strip()
                 )
-                add_row("produtos", row); st.success("Produto salvo!"); st.rerun()
+                add_row("produtos", row)
+                st.success("Produto salvo!")
+                st.rerun()
 
+    # ---- Lista + métricas dos produtos
     date_expr = produtos_date_sql_expr()
     dfp_all = df_sql(f"""
         SELECT id, {date_expr} AS data_add, nome, sku, upc, asin, estoque,
@@ -1379,12 +1408,14 @@ with tab6:
     dfp = apply_month_filter(dfp_all, g_mes, col="data_add") if g_mes else dfp_all
 
     if not dfp.empty:
+        # métricas por produto
         dfv = dfp.copy()
         dfv["p2b"] = dfv.apply(price_to_buy_eff, axis=1)
         dfv["gross_profit"] = dfv.apply(gross_profit_unit, axis=1)
         dfv["roi"] = dfv.apply(gross_roi, axis=1)
         dfv["margin"] = dfv.apply(margin_pct, axis=1)
 
+        # tabela
         view = pd.DataFrame({
             "ID": dfv["id"].astype(int), "Data": dfv["data_add"], "Nome": dfv["nome"],
             "SKU": dfv["sku"].fillna(""), "UPC": dfv["upc"].fillna(""), "ASIN": dfv["asin"].fillna(""),
@@ -1398,37 +1429,54 @@ with tab6:
         })
         st.markdown(df_to_clean_html(view, "del_prod", "tbl_prod"), unsafe_allow_html=True)
 
-        dr = df_sql("""SELECT id, data, produto_id, quantidade, valor_usd, sku, produto
-                       FROM amazon_receitas
-                       ORDER BY date(data) DESC, id DESC;""")
-        dr = apply_month_filter(dr, g_mes) if g_mes else dr
+        # ===== Receitas FBA para calcular lucro realizado
+        dr_all = df_sql("""
+            SELECT id, data, produto_id, quantidade, valor_usd, sku, produto
+            FROM amazon_receitas
+            ORDER BY date(data) DESC, id DESC;
+        """)
+        dr_mes = apply_month_filter(dr_all, g_mes) if g_mes else dr_all
 
-        total_lucro = 0.0
-        if not dr.empty:
-            by_id = dfv.set_index("id").to_dict("index")
-            by_sku = { _norm(s): r for s, r in dfv.set_index("sku").to_dict("index").items() if s and str(s).strip() }
-            by_upc = { _norm(s): r for s, r in dfv.set_index("upc").to_dict("index").items() if s and str(s).strip() }
-            by_asin= { _norm(s): r for s, r in dfv.set_index("asin").to_dict("index").items() if s and str(s).strip() }
-            by_name= { _norm(s): r for s, r in dfv.set_index("nome").to_dict("index").items() if s and str(s).strip() }
+        # ---- helpers de matching e soma do lucro
+        def _maps_from_products(df_products: pd.DataFrame):
+            by_id  = df_products.set_index("id").to_dict("index")
+            by_sku = { _norm(s): r for s, r in df_products.set_index("sku").to_dict("index").items()  if s and str(s).strip() }
+            by_upc = { _norm(s): r for s, r in df_products.set_index("upc").to_dict("index").items()  if s and str(s).strip() }
+            by_asin= { _norm(s): r for s, r in df_products.set_index("asin").to_dict("index").items() if s and str(s).strip() }
+            by_name= { _norm(s): r for s, r in df_products.set_index("nome").to_dict("index").items() if s and str(s).strip() }
+            return by_id, by_sku, by_upc, by_asin, by_name
 
-            dr["produto_id"] = pd.to_numeric(dr["produto_id"], errors="coerce").astype("Int64")
-
-            for _, row in dr.iterrows():
+        def _sum_profit(receipts_df: pd.DataFrame, prod_df: pd.DataFrame) -> float:
+            if receipts_df.empty or prod_df.empty:
+                return 0.0
+            by_id, by_sku, by_upc, by_asin, by_name = _maps_from_products(prod_df)
+            r = receipts_df.copy()
+            r["produto_id"] = pd.to_numeric(r["produto_id"], errors="coerce").astype("Int64")
+            total = 0.0
+            for _, row in r.iterrows():
                 prod = _match_prod_for_receipt(row, by_id, by_sku, by_upc, by_asin, by_name)
-                if not prod: continue
+                if not prod:
+                    continue
                 gp_u = gross_profit_unit(prod)
-                try: q = int(row.get("quantidade", 0) or 0)
-                except Exception: q = 0
-                total_lucro += gp_u * q
+                try:
+                    q = int(row.get("quantidade", 0) or 0)
+                except Exception:
+                    q = 0
+                total += gp_u * q
+            return float(total)
 
-        st.markdown(
-            f"""<div class="metric-card center" style="max-width: 1200px;background:linear-gradient(145deg,#233a74,#1a2b57);color:#fff;border:1px solid rgba(255,255,255,.10);border-radius:18px;padding:22px 26px;box-shadow:0 18px 46px rgba(0,0,0,.55),0 2px 0 {PRIMARY} inset;">
-                    <div class="title">Lucro realizado no período selecionado{(" — " + month_label(g_mes)) if g_mes else ""}</div>
-                    <div class="value">{escape(money_usd(total_lucro))}</div>
-                    <div style="margin-top:10px; font-weight:700;">Como calculamos?</div>
-                    <div>Lucro = Σ (Gross Profit por unidade × quantidade vendida).</div>
-                    <div>Gross Profit = Sold for – Amazon Fees – PREP – (Price to Buy + (TAX + Frete) ÷ quantidade).</div>
-                </div>""", unsafe_allow_html=True
-        )
+        # 1) Lucro do período selecionado (usa produtos filtrados)
+        lucro_periodo = _sum_profit(dr_mes, dfv)
+
+        # 2) Lucro TOTAL (todos os meses/anos)
+        lucro_total = _sum_profit(dr_all, dfp_all)
+
+        # ==== Cards no estilo KPI verde, centralizados
+        label_lucro = "Lucro realizado no período" + (f" — {month_label(g_mes)}" if g_mes else "")
+        render_single_kpi(kind="receita", label=label_lucro, usd_value=lucro_periodo, brl_value=0.0, center=True)
+
+        # Card extra: Lucro TOTAL (todos os meses/anos)
+        render_single_kpi(kind="receita", label="Lucro TOTAL — soma de todos os meses", usd_value=lucro_total, brl_value=0.0, center=True)
+
     else:
         st.info("Cadastre produtos para ver as métricas.")
